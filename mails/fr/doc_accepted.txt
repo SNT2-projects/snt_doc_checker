@@ -1,0 +1,17 @@
+{shop_url}
+
+{shop_name} vous informe qu'un de vos document a été refusé.
+
+Type de votre document : #{id_doc} - {type_doc}
+
+Statut du votre document : {statut_doc}
+
+Date du refus : {date_update}
+
+Message de l'équipe de {shop_name} :
+
+{message}
+
+[{shop_name}]({shop_url})
+
+Powered by [PrestaShop](https://www.prestashop.com/?utm_source=marchandprestashop&utm_medium=e-mail=utm_campaign=footer_1-7)
