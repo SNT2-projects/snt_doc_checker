@@ -1,34 +1,35 @@
 <?php
+
 /**
-* 2007-2025 PrestaShop
-*
-* NOTICE OF LICENSE
-*
-* This source file is subject to the Academic Free License (AFL 3.0)
-* that is bundled with this package in the file LICENSE.txt.
-* It is also available through the world-wide-web at this URL:
-* http://opensource.org/licenses/afl-3.0.php
-* If you did not receive a copy of the license and are unable to
-* obtain it through the world-wide-web, please send an email
-* to license@prestashop.com so we can send you a copy immediately.
-*
-* DISCLAIMER
-*
-* Do not edit or add to this file if you wish to upgrade PrestaShop to newer
-* versions in the future. If you wish to customize PrestaShop for your
-* needs please refer to http://www.prestashop.com for more information.
-*
-*  @author    PrestaShop SA <contact@prestashop.com>
-*  @copyright 2007-2025 PrestaShop SA
-*  @license   http://opensource.org/licenses/afl-3.0.php  Academic Free License (AFL 3.0)
-*  International Registered Trademark & Property of PrestaShop SA
-*/
+ * 2007-2025 PrestaShop
+ *
+ * NOTICE OF LICENSE
+ *
+ * This source file is subject to the Academic Free License (AFL 3.0)
+ * that is bundled with this package in the file LICENSE.txt.
+ * It is also available through the world-wide-web at this URL:
+ * http://opensource.org/licenses/afl-3.0.php
+ * If you did not receive a copy of the license and are unable to
+ * obtain it through the world-wide-web, please send an email
+ * to license@prestashop.com so we can send you a copy immediately.
+ *
+ * DISCLAIMER
+ *
+ * Do not edit or add to this file if you wish to upgrade PrestaShop to newer
+ * versions in the future. If you wish to customize PrestaShop for your
+ * needs please refer to http://www.prestashop.com for more information.
+ *
+ *  @author    PrestaShop SA <contact@prestashop.com>
+ *  @copyright 2007-2025 PrestaShop SA
+ *  @license   http://opensource.org/licenses/afl-3.0.php  Academic Free License (AFL 3.0)
+ *  International Registered Trademark & Property of PrestaShop SA
+ */
 
 if (!defined('_PS_VERSION_')) {
     exit;
 }
 
-require_once(dirname(__FILE__).'/s3/S3Utils.php');
+require_once(dirname(__FILE__) . '/s3/S3Utils.php');
 
 
 class Snt_doc_checker extends Module
@@ -36,7 +37,7 @@ class Snt_doc_checker extends Module
     protected $config_form = false;
     private $s3Utils;
     private $s3Key;
-    private $s3Secret; 
+    private $s3Secret;
     private $s3Bucket;
     private $s3StorageType;
     private $awsRegion;
@@ -45,7 +46,7 @@ class Snt_doc_checker extends Module
     {
         $this->name = 'snt_doc_checker';
         $this->tab = 'administration';
-        $this->version = '1.3.0';
+        $this->version = '1.4.0';
         $this->author = 'SNT2';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -53,7 +54,7 @@ class Snt_doc_checker extends Module
 
         $this->displayName = $this->l('SNT Doc Checker');
         $this->description = $this->l('Module de vérification des documents');
-        
+
         // Get S3 configuration
         $this->s3Key = Configuration::get('SNT_DOC_CHECKER_S3_KEY');
         $this->s3Secret = Configuration::get('SNT_DOC_CHECKER_S3_SECRET');
@@ -74,7 +75,7 @@ class Snt_doc_checker extends Module
 
     public function install()
     {
-        include(dirname(__FILE__).'/sql/install.php');
+        include(dirname(__FILE__) . '/sql/install.php');
 
         return parent::install() &&
             $this->registerHook('header') &&
@@ -84,14 +85,16 @@ class Snt_doc_checker extends Module
             $this->registerHook('actionFrontControllerSetMedia') &&
             $this->registerHook('displayAdminOrder') &&
             $this->registerHook('displayTagCommentOrder') &&
+            $this->registerHook('actionObjectOrderHistoryAddAfter') &&
             $this->installTab('AdminParentModulesSf', 'AdminMenuTabsDocChecker', 'Doc Checker') &&
             $this->cleanLegacyTableDocuments() &&
             $this->copyEmailTemplates();
     }
 
-    public function installTab($parent_class, $class_name, $name)  {
+    public function installTab($parent_class, $class_name, $name)
+    {
         $tab = new Tab();
-        $tab->name[$this->context->language->id] = $name; 
+        $tab->name[$this->context->language->id] = $name;
         $tab->class_name = $class_name;
         $tab->id_parent = (int) Tab::getIdFromClassName($parent_class);
         $tab->module = $this->name;
@@ -168,8 +171,8 @@ class Snt_doc_checker extends Module
         // Vérifie si l'ancien module (tag_checker) est installé pour permettre l'import
         $isLegacyModuleInstalled = Module::isInstalled('tag_checker');
         $this->context->smarty->assign('is_legacy_module_installed', $isLegacyModuleInstalled);
-        
-        $output .= $this->context->smarty->fetch($this->local_path.'views/templates/admin/configure.tpl');
+
+        $output .= $this->context->smarty->fetch($this->local_path . 'views/templates/admin/configure.tpl');
 
         return $output . $this->renderForm();
     }
@@ -187,7 +190,7 @@ class Snt_doc_checker extends Module
         $helper->identifier = $this->identifier;
         $helper->submit_action = 'submitSnt_doc_checkerModule';
         $helper->currentIndex = $this->context->link->getAdminLink('AdminModules', false)
-            .'&configure='.$this->name.'&tab_module='.$this->tab.'&module_name='.$this->name;
+            . '&configure=' . $this->name . '&tab_module=' . $this->tab . '&module_name=' . $this->name;
         $helper->token = Tools::getAdminTokenLite('AdminModules');
 
         $helper->tpl_vars = array(
@@ -200,35 +203,35 @@ class Snt_doc_checker extends Module
     }
 
 
-	protected function getConfigForm()
-	{
-		return [
-			'form' => [
-				'legend' => [
-					'title' => $this->l('Settings'),
-					'icon' => 'icon-cogs',
-				],
-				'tabs' => [
-					'messages' => $this->l('Messages'),
-					'restrictions' => $this->l('Restrictions'),
+    protected function getConfigForm()
+    {
+        return [
+            'form' => [
+                'legend' => [
+                    'title' => $this->l('Settings'),
+                    'icon' => 'icon-cogs',
+                ],
+                'tabs' => [
+                    'messages' => $this->l('Messages'),
+                    'restrictions' => $this->l('Restrictions'),
                     's3' => $this->l('S3'),
                     'automation' => $this->l('Automatisation'),
                     'logs' => $this->l('Logs')
-				],
-				'input' => array_merge(
+                ],
+                'input' => array_merge(
                     $this->getConfigFormMessages(),
-					$this->getConfigFormRestriction(),
+                    $this->getConfigFormRestriction(),
                     $this->getConfigFormS3(),
                     $this->getConfigFormAutomation(),
                     $this->getConfigFormLogs()
-				),
-				'submit' => [
-					'title' => $this->l('Save'),
-					'class' => 'btn btn-default pull-right'
-				]
-			]
-		];
-	}
+                ),
+                'submit' => [
+                    'title' => $this->l('Save'),
+                    'class' => 'btn btn-default pull-right'
+                ]
+            ]
+        ];
+    }
 
 
     protected function getConfigFormS3()
@@ -277,51 +280,51 @@ class Snt_doc_checker extends Module
     }
 
 
-	protected function getConfigFormMessages()
-	{
-		return [
-			[
-				'tab' => 'messages',
-				'type' => 'switch',
-				'label' => $this->l('Activer les messages en front'),
-				'name' => 'SNT_DOC_CHECKER_MESSAGES_FRONT',
-				'is_bool' => true,
-				'desc' => $this->l('Activer ou désactiver l\'affichage des messages en front office'),
-				'values' => [
-					[
-						'id' => 'active_on',
-						'value' => true,
-						'label' => $this->l('Oui')
-					],
-					[
-						'id' => 'active_off',
-						'value' => false,
-						'label' => $this->l('Non')
-					]
-				],
-			],
-			[
-				'tab' => 'messages',
-				'type' => 'textarea',
-				'label' => $this->l('Message tunnel de commande ( Catégorie C )'),
-				'name' => 'SNT_DOC_CHECKER_MESSAGE_TUNNEL_C',
-				'desc' => $this->l('Message affiché dans le tunnel de commande'),
-				'rows' => 5,
-				'cols' => 100,
+    protected function getConfigFormMessages()
+    {
+        return [
+            [
+                'tab' => 'messages',
+                'type' => 'switch',
+                'label' => $this->l('Activer les messages en front'),
+                'name' => 'SNT_DOC_CHECKER_MESSAGES_FRONT',
+                'is_bool' => true,
+                'desc' => $this->l('Activer ou désactiver l\'affichage des messages en front office'),
+                'values' => [
+                    [
+                        'id' => 'active_on',
+                        'value' => true,
+                        'label' => $this->l('Oui')
+                    ],
+                    [
+                        'id' => 'active_off',
+                        'value' => false,
+                        'label' => $this->l('Non')
+                    ]
+                ],
+            ],
+            [
+                'tab' => 'messages',
+                'type' => 'textarea',
+                'label' => $this->l('Message tunnel de commande ( Catégorie C )'),
+                'name' => 'SNT_DOC_CHECKER_MESSAGE_TUNNEL_C',
+                'desc' => $this->l('Message affiché dans le tunnel de commande'),
+                'rows' => 5,
+                'cols' => 100,
                 'autoload_rte' => true,
-			],
-			[
-				'tab' => 'messages',
-				'type' => 'textarea',
-				'label' => $this->l('Message tunnel de commande ( Catégorie D )'),
-				'name' => 'SNT_DOC_CHECKER_MESSAGE_TUNNEL_D',
-				'desc' => $this->l('Message affiché dans le tunnel de commande'),
-				'rows' => 5,
-				'cols' => 100,
+            ],
+            [
+                'tab' => 'messages',
+                'type' => 'textarea',
+                'label' => $this->l('Message tunnel de commande ( Catégorie D )'),
+                'name' => 'SNT_DOC_CHECKER_MESSAGE_TUNNEL_D',
+                'desc' => $this->l('Message affiché dans le tunnel de commande'),
+                'rows' => 5,
+                'cols' => 100,
                 'autoload_rte' => true,
-			]
-		];
-	}
+            ]
+        ];
+    }
 
     protected function getConfigFormRestriction()
     {
@@ -331,7 +334,7 @@ class Snt_doc_checker extends Module
                 'type' => 'text',
                 'label' => $this->l('ID de la catégorie C à restreindre'),
                 'name' => 'SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_C',
-                'desc' => $this->l('ID de la catégorie C à restreindre'),
+                'desc' => $this->l('ID de la valeur de caractéristique (feature_value) pour la catégorie C'),
                 'size' => 50
             ],
             [
@@ -339,7 +342,39 @@ class Snt_doc_checker extends Module
                 'type' => 'text',
                 'label' => $this->l('ID de la catégorie D à restreindre'),
                 'name' => 'SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_D',
-                'desc' => $this->l('ID de la catégorie D à restreindre'),
+                'desc' => $this->l('ID de la valeur de caractéristique (feature_value) pour la catégorie D'),
+                'size' => 50
+            ],
+            [
+                'tab' => 'restrictions',
+                'type' => 'text',
+                'label' => $this->l('ID du statut "Demande de pièces : Catégorie C"'),
+                'name' => 'SNT_DOC_CHECKER_ORDER_STATUS_PIECES_C',
+                'desc' => $this->l('ID du statut de commande à appliquer automatiquement quand une commande contient des produits de catégorie C'),
+                'size' => 50
+            ],
+            [
+                'tab' => 'restrictions',
+                'type' => 'text',
+                'label' => $this->l('ID du statut "Demande de pièces : Catégorie D"'),
+                'name' => 'SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D',
+                'desc' => $this->l('ID du statut de commande à appliquer automatiquement quand une commande contient des produits de catégorie D (prioritaire si C et D présents)'),
+                'size' => 50
+            ],
+            [
+                'tab' => 'restrictions',
+                'type' => 'text',
+                'label' => $this->l('ID du statut "Pièces validées"'),
+                'name' => 'SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES',
+                'desc' => $this->l('ID du statut de commande à appliquer automatiquement quand le client a déjà des documents valides'),
+                'size' => 50
+            ],
+            [
+                'tab' => 'restrictions',
+                'type' => 'text',
+                'label' => $this->l('Statuts déclencheurs (IDs séparés par des virgules)'),
+                'name' => 'SNT_DOC_CHECKER_TRIGGER_STATUSES',
+                'desc' => $this->l('IDs des statuts de paiement qui déclenchent l\'attribution automatique du statut pièces. Ex: 10,2 pour "En attente de virement bancaire" et "Paiement accepté"'),
                 'size' => 50
             ]
         ];
@@ -433,18 +468,22 @@ class Snt_doc_checker extends Module
             'SNT_DOC_CHECKER_MESSAGES_FRONT' => Configuration::get('SNT_DOC_CHECKER_MESSAGES_FRONT', true),
             'SNT_DOC_CHECKER_MESSAGE_TUNNEL_C' => Configuration::get('SNT_DOC_CHECKER_MESSAGE_TUNNEL_C', ''),
             'SNT_DOC_CHECKER_MESSAGE_TUNNEL_D' => Configuration::get('SNT_DOC_CHECKER_MESSAGE_TUNNEL_D', ''),
-            
+
             // Restrictions
             'SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_C' => Configuration::get('SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_C', ''),
             'SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_D' => Configuration::get('SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_D', ''),
-            
+            'SNT_DOC_CHECKER_ORDER_STATUS_PIECES_C' => Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_PIECES_C', ''),
+            'SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D' => Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D', ''),
+            'SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES' => Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES', ''),
+            'SNT_DOC_CHECKER_TRIGGER_STATUSES' => Configuration::get('SNT_DOC_CHECKER_TRIGGER_STATUSES', ''),
+
             // S3
             'SNT_DOC_CHECKER_S3_KEY' => Configuration::get('SNT_DOC_CHECKER_S3_KEY', ''),
             'SNT_DOC_CHECKER_S3_SECRET' => Configuration::get('SNT_DOC_CHECKER_S3_SECRET', ''),
             'SNT_DOC_CHECKER_S3_BUCKET' => Configuration::get('SNT_DOC_CHECKER_S3_BUCKET', ''),
             'SNT_DOC_CHECKER_AWS_REGION' => Configuration::get('SNT_DOC_CHECKER_AWS_REGION', ''),
             'SNT_DOC_CHECKER_S3_STORAGE_TYPE' => Configuration::get('SNT_DOC_CHECKER_S3_STORAGE_TYPE', ''),
-            
+
             // Automatisation
             'SNT_DOC_CHECKER_DAILY_CHECK' => Configuration::get('SNT_DOC_CHECKER_DAILY_CHECK', false),
             'SNT_DOC_CHECKER_CRON_SECURE_KEY' => $this->getCronSecureKey(),
@@ -471,12 +510,12 @@ class Snt_doc_checker extends Module
     private function getCronSecureKey()
     {
         $secureKey = Configuration::get('SNT_DOC_CHECKER_CRON_SECURE_KEY');
-        
+
         if (empty($secureKey)) {
             $secureKey = $this->generateSecureKey();
             Configuration::updateValue('SNT_DOC_CHECKER_CRON_SECURE_KEY', $secureKey);
         }
-        
+
         return $secureKey;
     }
 
@@ -495,7 +534,7 @@ class Snt_doc_checker extends Module
     {
         $secureKey = $this->getCronSecureKey();
         $baseUrl = Tools::getHttpHost(true) . __PS_BASE_URI__;
-        
+
         return $baseUrl . 'index.php?fc=module&module=snt_doc_checker&controller=cron&secure_key=' . $secureKey;
     }
 
@@ -514,7 +553,7 @@ class Snt_doc_checker extends Module
     protected function handleAjaxRequest()
     {
         $action = Tools::getValue('action');
-        
+
         switch ($action) {
             case 'count_documents':
                 $this->ajaxCountDocuments();
@@ -534,7 +573,7 @@ class Snt_doc_checker extends Module
     {
         try {
             $this->logMessage("Début du comptage des documents à importer");
-            
+
             // Vérifier si la table de l'ancien module existe
             $tableExists = Db::getInstance()->executeS("SHOW TABLES LIKE 'ps_tag_checker_document'");
 
@@ -558,7 +597,7 @@ class Snt_doc_checker extends Module
             ');
 
             $this->logMessage("Nombre de documents à importer: " . $count);
-            
+
             // Compter aussi les documents déjà importés pour information
             $importedCount = Db::getInstance()->getValue('
                 SELECT COUNT(*) 
@@ -578,7 +617,6 @@ class Snt_doc_checker extends Module
                 'already_imported' => (int)$importedCount,
                 'total_in_source' => (int)$count + (int)$importedCount
             ));
-
         } catch (Exception $e) {
             $this->logMessage('Erreur lors du comptage: ' . $e->getMessage());
             $this->ajaxResponse(false, 'Erreur lors du comptage: ' . $e->getMessage());
@@ -593,12 +631,13 @@ class Snt_doc_checker extends Module
         try {
             $offset = (int)Tools::getValue('offset', 0);
             $limit = (int)Tools::getValue('limit', 10);
-            
+
             // Log détaillé du début du traitement
             $this->logMessage("Début du traitement du lot - Offset: $offset, Limit: $limit");
 
             // Récupérer un lot de documents non encore importés
-            $tagCheckerDocs = Db::getInstance()->executeS('
+            $tagCheckerDocs = Db::getInstance()->executeS(
+                '
                 SELECT tcd.* 
                 FROM ps_tag_checker_document tcd
                 WHERE tcd.statut_document != "deleted"
@@ -608,7 +647,7 @@ class Snt_doc_checker extends Module
                     AND sdc.id_customer = tcd.id_customer
                 )
                 ORDER BY tcd.id_document ASC
-                LIMIT '.(int)$limit
+                LIMIT ' . (int)$limit
             );
 
             // Vérifier si nous avons des documents à traiter
@@ -633,15 +672,16 @@ class Snt_doc_checker extends Module
             foreach ($tagCheckerDocs as $doc) {
                 try {
                     $this->logMessage("Traitement du document ID: " . $doc['id_document'] . ", Customer: " . $doc['id_customer']);
-                    
+
                     // Vérifier si le document n'existe pas déjà (double vérification)
-                    $exists = Db::getInstance()->getValue('
+                    $exists = Db::getInstance()->getValue(
+                        '
                         SELECT id_data 
                         FROM ps_snt_doc_checker_data 
                         WHERE id_document = ' . (int)$doc['id_document'] . ' 
                         AND id_customer = ' . (int)$doc['id_customer']
                     );
-                    
+
                     if ($exists) {
                         $this->logMessage("Document déjà importé - ID: " . $doc['id_document']);
                         continue;
@@ -664,21 +704,21 @@ class Snt_doc_checker extends Module
 
                     if ($resultImportDb) {
                         $this->logMessage("Insertion DB réussie pour document ID: " . $doc['id_document']);
-                        
+
                         // Upload sur S3 si l'insertion en base a réussi et si S3 est configuré
                         if ($this->s3Utils) {
                             // Chemin vers les fichiers de l'ancien module
-                            $filePath = _PS_MODULE_DIR_.'tag_checker/controllers/front/'.$doc['link_document'];
+                            $filePath = _PS_MODULE_DIR_ . 'tag_checker/controllers/front/' . $doc['link_document'];
                             if (file_exists($filePath)) {
                                 $this->logMessage("Début upload S3 pour fichier: " . $doc['link_document']);
                                 $resultUploadS3 = $this->s3Utils->putS3($filePath);
-                                
+
                                 if ($resultUploadS3) {
                                     $this->logMessage("Upload S3 réussi pour fichier: " . $doc['link_document']);
                                 } else {
                                     $this->logMessage("Erreur upload S3 pour fichier: " . $doc['link_document']);
                                 }
-                                
+
                                 // Ajouter un délai pour éviter les rate limits S3
                                 usleep(10000); // 0.01 seconde
                             } else {
@@ -709,7 +749,6 @@ class Snt_doc_checker extends Module
                         $errors[] = $error_msg;
                         $this->logMessage($error_msg);
                     }
-
                 } catch (Exception $e) {
                     $errorCount++;
                     $error_msg = 'Erreur pour document ID ' . $doc['id_document'] . ': ' . $e->getMessage();
@@ -727,7 +766,6 @@ class Snt_doc_checker extends Module
                 'processed' => count($tagCheckerDocs),
                 'is_empty' => false
             ));
-
         } catch (Exception $e) {
             $this->logMessage('Erreur lors de l\'importation du lot: ' . $e->getMessage());
             $this->ajaxResponse(false, 'Erreur lors de l\'importation du lot: ' . $e->getMessage());
@@ -743,23 +781,23 @@ class Snt_doc_checker extends Module
         if ($logsEnabled) {
             $timestamp = date('Y-m-d H:i:s');
             $logMessage = "[$timestamp] $message\n";
-            
+
             // Écrire dans un fichier de log
             $logFile = _PS_MODULE_DIR_ . 'snt_doc_checker/logs/import_debug.log';
-            
+
             // Créer le dossier logs s'il n'existe pas
             $logDir = dirname($logFile);
             if (!is_dir($logDir)) {
                 mkdir($logDir, 0755, true);
             }
-            
+
             // Nettoyer les logs anciens si le fichier devient trop volumineux
             $this->cleanOldLogs($logFile);
-            
+
             file_put_contents($logFile, $logMessage, FILE_APPEND | LOCK_EX);
         }
     }
-    
+
     /**
      * Nettoie les logs anciens pour éviter que le fichier devienne trop volumineux
      */
@@ -767,7 +805,7 @@ class Snt_doc_checker extends Module
     {
         if (file_exists($logFile) && filesize($logFile) > 5 * 1024 * 1024) { // 5MB
             $lines = file($logFile, FILE_IGNORE_NEW_LINES);
-            
+
             // Garder seulement les 1000 dernières lignes
             if (count($lines) > 1000) {
                 $lines = array_slice($lines, -1000);
@@ -775,7 +813,7 @@ class Snt_doc_checker extends Module
             }
         }
     }
-    
+
     /**
      * Ajoute une méthode pour vider les logs manuellement
      */
@@ -801,9 +839,8 @@ class Snt_doc_checker extends Module
 
         Db::getInstance()->execute('DELETE FROM ps_tag_checker_document WHERE id_customer = 0');
         return true;
-
     }
-    
+
     /**
      * Envoie une réponse AJAX
      */
@@ -813,7 +850,7 @@ class Snt_doc_checker extends Module
             'success' => $success,
             'message' => $message
         );
-        
+
         if (!empty($data)) {
             $response = array_merge($response, $data);
         }
@@ -933,7 +970,7 @@ class Snt_doc_checker extends Module
     {
         $this->context->controller->registerStylesheet(
             'snt_doc_checker-style',
-            $this->_path.'views/css/front.css',
+            $this->_path . 'views/css/front.css',
             [
                 'media' => 'all',
                 'priority' => 999,
@@ -956,7 +993,7 @@ class Snt_doc_checker extends Module
             'vpc' => 'Validation du permis de chasse',
             'autre' => 'Autre document'
         );
-        
+
         return isset($types[$docShortName]) ? $types[$docShortName] : 'Autre document';
     }
 
@@ -966,18 +1003,18 @@ class Snt_doc_checker extends Module
         $order = new Order($params['id_order']);
         $products = $order->getProducts();
         $customer = new Customer($order->id_customer);
-        
+
         // Vérifier si la commande contient des produits de catégorie C ou D
         $hasRestrictedProducts = false;
         $restrictedCategories = array(
             Configuration::get('SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_C'),
             Configuration::get('SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_D')
         );
-        
+
         foreach ($products as $product) {
             // Récupérer les caractéristiques du produit
             $productFeatures = Product::getFeaturesStatic($product['product_id']);
-            
+
             if (!empty($productFeatures)) {
                 foreach ($productFeatures as $feature) {
                     if (in_array((int)$feature['id_feature_value'], $restrictedCategories)) {
@@ -987,20 +1024,21 @@ class Snt_doc_checker extends Module
                 }
             }
         }
-        
+
         if (!$hasRestrictedProducts) {
             $this->context->smarty->assign('no_restricted_products', true);
             return $this->display(__FILE__, 'views/templates/admin/order_documents.tpl');
         }
-        
+
         // Récupérer les documents du client
-        $documents = Db::getInstance(_PS_USE_SQL_SLAVE_)->executeS('
-            SELECT * FROM '._DB_PREFIX_.'snt_doc_checker_data 
+        $documents = Db::getInstance(_PS_USE_SQL_SLAVE_)->executeS(
+            '
+            SELECT * FROM ' . _DB_PREFIX_ . 'snt_doc_checker_data 
             WHERE id_customer = ' . (int)$customer->id . ' 
             AND statut_document != "deleted" 
             ORDER BY dte_upload DESC'
         );
-        
+
         if (empty($documents)) {
             $this->context->smarty->assign('no_documents', true);
             $this->context->smarty->assign('customer', $customer);
@@ -1008,8 +1046,8 @@ class Snt_doc_checker extends Module
         }
 
 
-       
-        
+
+
         // Vérifier les documents sans date d'expiration
         $hasDocumentsWithoutExpiration = false;
         foreach ($documents as $doc) {
@@ -1021,8 +1059,8 @@ class Snt_doc_checker extends Module
 
 
 
-         
-        
+
+
         // Formater les documents pour l'affichage
 
         $formattedDocuments = array();
@@ -1030,11 +1068,11 @@ class Snt_doc_checker extends Module
 
             $docType = $this->getDocType($doc['type_document']);
 
-            
+
             // Formatage du statut
             $statusClass = '';
             $statusName = '';
-            
+
             switch ($doc['statut_document']) {
                 case 'valid':
                     $statusClass = 'success';
@@ -1057,7 +1095,7 @@ class Snt_doc_checker extends Module
                     $statusName = 'Inconnu';
             }
 
-            
+
             $formattedDocuments[] = array(
                 'id' => $doc['id_data'],
                 'type' => $docType,
@@ -1069,7 +1107,7 @@ class Snt_doc_checker extends Module
             );
         }
 
-        
+
         $this->context->smarty->assign(array(
             'documents' => $formattedDocuments,
             'has_documents' => true,
@@ -1078,7 +1116,7 @@ class Snt_doc_checker extends Module
             'has_restricted_products' => true,
 
         ));
-        
+
         return $this->display(__FILE__, 'views/templates/admin/order_documents.tpl');
     }
 
@@ -1087,8 +1125,7 @@ class Snt_doc_checker extends Module
     {
 
         // if SNT_DOC_CHECKER_MESSAGES_FRONT is true
-        if (Configuration::get('SNT_DOC_CHECKER_MESSAGES_FRONT') == true)
-        {
+        if (Configuration::get('SNT_DOC_CHECKER_MESSAGES_FRONT') == true) {
             $products  = Context::getContext()->cart->getProducts();
             $bOk       = false;
             $ids       = array();
@@ -1127,5 +1164,155 @@ class Snt_doc_checker extends Module
         return Configuration::get('SNT_DOC_CHECKER_MESSAGE_' . $type);
     }
 
+    /**
+     * Hook appelé APRÈS qu'une entrée d'historique de commande soit ajoutée en base
+     * Vérifie si la commande contient des produits de catégorie C ou D
+     * et ajoute automatiquement le statut approprié :
+     * - "Pièces validées" si le client a déjà des documents valides
+     * - "Demande de pièces : Catégorie C/D" sinon
+     * Ne se déclenche QUE si le statut ajouté est un statut déclencheur configuré
+     */
+    public function hookActionObjectOrderHistoryAddAfter($params)
+    {
+        // Récupérer l'objet OrderHistory qui vient d'être ajouté
+        $orderHistory = $params['object'];
+        if (!Validate::isLoadedObject($orderHistory)) {
+            return;
+        }
 
+        $idOrder = (int)$orderHistory->id_order;
+        $newStatusId = (int)$orderHistory->id_order_state;
+
+        // Récupérer les statuts déclencheurs configurés
+        $triggerStatusesConfig = Configuration::get('SNT_DOC_CHECKER_TRIGGER_STATUSES');
+        if (empty($triggerStatusesConfig)) {
+            // Si aucun statut déclencheur n'est configuré, ne rien faire
+            return;
+        }
+
+        // Parser les IDs des statuts déclencheurs (séparés par des virgules)
+        $triggerStatuses = array_map('intval', array_filter(explode(',', $triggerStatusesConfig)));
+
+        // Vérifier si le nouveau statut est un statut déclencheur
+        if (!in_array($newStatusId, $triggerStatuses)) {
+            // Le statut appliqué n'est pas un déclencheur, ne rien faire
+            return;
+        }
+
+        // Récupérer les IDs des statuts configurés
+        $orderStatusPiecesC = (int)Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_PIECES_C');
+        $orderStatusPiecesD = (int)Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D');
+        $orderStatusPiecesValides = (int)Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES');
+
+        // Si aucun statut n'est configuré, ne rien faire
+        if (!$orderStatusPiecesC && !$orderStatusPiecesD && !$orderStatusPiecesValides) {
+            return;
+        }
+
+        // Récupérer les IDs des catégories restreintes
+        $categorieC = (int)Configuration::get('SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_C');
+        $categorieD = (int)Configuration::get('SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_D');
+
+        // Si aucune catégorie n'est configurée, ne rien faire
+        if (!$categorieC && !$categorieD) {
+            return;
+        }
+
+        // Charger la commande
+        $order = new Order($idOrder);
+        if (!Validate::isLoadedObject($order)) {
+            return;
+        }
+
+        // Vérifier si un de nos statuts est déjà dans l'historique
+        $history = $order->getHistory($this->context->language->id);
+        foreach ($history as $historyItem) {
+            $historyStatusId = (int)$historyItem['id_order_state'];
+            if (($orderStatusPiecesC && $historyStatusId == $orderStatusPiecesC) ||
+                ($orderStatusPiecesD && $historyStatusId == $orderStatusPiecesD) ||
+                ($orderStatusPiecesValides && $historyStatusId == $orderStatusPiecesValides)) {
+                // Notre statut est déjà présent, ne pas le rajouter
+                return;
+            }
+        }
+
+        // Récupérer les produits de la commande
+        $products = $order->getProducts();
+        $hasCategorieC = false;
+        $hasCategorieD = false;
+
+        foreach ($products as $product) {
+            // Récupérer les caractéristiques du produit
+            $features = Product::getFeaturesStatic((int)$product['product_id']);
+
+            foreach ($features as $feature) {
+                $featureValueId = (int)$feature['id_feature_value'];
+
+                // Vérifier catégorie C
+                if ($categorieC && $featureValueId == $categorieC) {
+                    $hasCategorieC = true;
+                }
+
+                // Vérifier catégorie D
+                if ($categorieD && $featureValueId == $categorieD) {
+                    $hasCategorieD = true;
+                }
+            }
+        }
+
+        // Si aucun produit de catégorie C ou D, ne rien faire
+        if (!$hasCategorieC && !$hasCategorieD) {
+            return;
+        }
+
+        // Vérifier si le client a des documents valides
+        $hasValidDocuments = $this->customerHasValidDocuments((int)$order->id_customer);
+
+        // Déterminer quel statut appliquer
+        $statusToApply = 0;
+
+        if ($hasValidDocuments && $orderStatusPiecesValides) {
+            // Le client a des documents valides → statut "Pièces validées"
+            $statusToApply = $orderStatusPiecesValides;
+        } elseif ($hasCategorieD && $orderStatusPiecesD) {
+            // D est prioritaire (pas de documents valides)
+            $statusToApply = $orderStatusPiecesD;
+        } elseif ($hasCategorieC && $orderStatusPiecesC) {
+            // Seulement C (pas de documents valides)
+            $statusToApply = $orderStatusPiecesC;
+        }
+
+        // Si un statut doit être appliqué
+        if ($statusToApply) {
+            // Attendre 2 secondes pour garantir que notre statut ait un timestamp plus récent
+            sleep(2);
+
+            // Créer un nouvel historique de commande avec timestamp forcé
+            $orderHistory = new OrderHistory();
+            $orderHistory->id_order = $idOrder;
+            $orderHistory->id_employee = 0; // Automatique (pas d'employé)
+            // Forcer le timestamp à maintenant (après le sleep)
+            $orderHistory->date_add = date('Y-m-d H:i:s');
+            $orderHistory->changeIdOrderState($statusToApply, $idOrder);
+            $orderHistory->addWithemail(); // Envoie l'email associé au statut
+        }
+    }
+
+    /**
+     * Vérifie si un client a au moins un document valide (statut = 'valid')
+     *
+     * @param int $idCustomer
+     * @return bool
+     */
+    private function customerHasValidDocuments($idCustomer)
+    {
+        $count = Db::getInstance()->getValue('
+            SELECT COUNT(*)
+            FROM ' . _DB_PREFIX_ . 'snt_doc_checker_data
+            WHERE id_customer = ' . (int)$idCustomer . '
+            AND statut_document = "valid"
+        ');
+
+        return (int)$count > 0;
+    }
 }

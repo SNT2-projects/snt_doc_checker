@@ -179,6 +179,7 @@ snt_doc_checker/
 | `actionFrontControllerSetMedia` | CSS front-office |
 | `displayAdminOrder` | Affiche documents sur commande |
 | `displayTagCommentOrder` | Avertissement catégorie C/D dans tunnel |
+| `actionValidateOrder` | Changement statut auto si produit cat. C/D (v1.3.0) |
 
 ---
 
@@ -191,6 +192,7 @@ snt_doc_checker/
 | `SNT_DOC_CHECKER_MESSAGE_TUNNEL_D` | Message catégorie D (HTML) |
 | `SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_C` | ID valeur caractéristique cat. C |
 | `SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_D` | ID valeur caractéristique cat. D |
+| `SNT_DOC_CHECKER_ORDER_STATUS_PIECES` | ID statut "Demande de pièces" (v1.3.0) |
 | `SNT_DOC_CHECKER_S3_KEY` | Clé AWS |
 | `SNT_DOC_CHECKER_S3_SECRET` | Secret AWS |
 | `SNT_DOC_CHECKER_S3_BUCKET` | Nom du bucket |
@@ -345,6 +347,7 @@ snt_doc_checker/
 | 2026-02-03 | 1.2.0 | Renommer références tag_checker → snt_doc_checker | ✅ Fait |
 | 2026-02-03 | 1.3.0 | Date naissance client + Date expiration obligatoire | ✅ Fait |
 | 2026-02-03 | 1.3.0 | Synchronisation statut entre documents liés (recto/verso) | ✅ Fait |
+| 2026-02-03 | 1.3.0 | Changement statut automatique commande si produit cat. C/D | ✅ Fait |
 
 ---
 
@@ -363,3 +366,9 @@ snt_doc_checker/
 6. **Validation obligatoire (v1.3.0):**
    - **Date de naissance:** BLOQUE la sauvegarde d'un document si non renseignée (liée au client, pas au document)
    - **Date d'expiration:** BLOQUE la validation (statut "valid") si non renseignée
+
+7. **Changement statut automatique commande (v1.3.0):**
+   - Hook `actionValidateOrder` intercepte les commandes validées
+   - Vérifie si les produits ont des feature_values = catégorie C ou D
+   - Si oui, change le statut vers "Demande de pièces" (ID configuré dans `SNT_DOC_CHECKER_ORDER_STATUS_PIECES`)
+   - L'email associé au statut est envoyé automatiquement via `addWithemail()`
