@@ -84,6 +84,20 @@ $sql[] = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'snt_doc_checker_doc_ass
     KEY `id_document_associe` (`id_document_associe`)
 ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8;';
 
+
+// Table pour les informations client (date de naissance)
+// La date de naissance est liee au client, pas aux documents individuels
+$sql[] = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'snt_doc_checker_customer` (
+    `id_customer_info` int(11) NOT NULL AUTO_INCREMENT,
+    `id_customer` int(11) NOT NULL,
+    `birth_date` DATE NULL,
+    `date_add` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `date_upd` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id_customer_info`),
+    UNIQUE KEY `id_customer` (`id_customer`)
+) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8;';
+
+
 foreach ($sql as $query) {
     if (Db::getInstance()->execute($query) == false) {
         return false;

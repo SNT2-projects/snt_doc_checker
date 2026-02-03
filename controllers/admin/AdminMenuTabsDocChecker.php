@@ -1,6 +1,7 @@
 <?php
 
 require_once _PS_MODULE_DIR_.'snt_doc_checker/models/SntDocCheckerData.php';
+require_once _PS_MODULE_DIR_.'snt_doc_checker/models/SntDocCheckerCustomer.php';
 require_once _PS_MODULE_DIR_.'snt_doc_checker/s3/S3Utils.php';
 
 
@@ -50,6 +51,9 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
                     break;
                 case 'setExpirationDate':
                     $this->ajaxProcessSetExpirationDate();
+                    break;
+                case 'setBirthDate':
+                    $this->ajaxProcessSetBirthDate();
                     break;
             }
         }
@@ -158,7 +162,7 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
     public function renderView()
     {
         $id_data = Tools::getValue($this->identifier);
-    
+
         if (!$id_data) {
             Tools::redirectAdmin($this->context->link->getAdminLink('AdminMenuTabsDocChecker'));
         }
@@ -170,9 +174,17 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
         if (!empty($data['id_customer'])) {
             $customer_data = Db::getInstance()->getRow('
                 SELECT id_customer, firstname, lastname, email, date_add, is_guest, active
-                FROM '._DB_PREFIX_.'customer 
+                FROM '._DB_PREFIX_.'customer
                 WHERE id_customer = '.(int)$data['id_customer']
             );
+        }
+
+        // Récupérer la date de naissance du client
+        $customer_birth_info = null;
+        $has_birth_date = false;
+        if (!empty($data['id_customer'])) {
+            $customer_birth_info = SntDocCheckerCustomer::getByCustomerId($data['id_customer']);
+            $has_birth_date = SntDocCheckerCustomer::hasBirthDate($data['id_customer']);
         }
 
         // Générer le lien temporaire S3 pour l'aperçu
@@ -226,6 +238,8 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
         $this->context->smarty->assign(array(
             'document_data' => $data,
             'customer_data' => $customer_data,
+            'customer_birth_info' => $customer_birth_info,
+            'has_birth_date' => $has_birth_date,
             'temporary_url' => $temporaryUrl,
             'file_extension' => pathinfo($data['link_document'], PATHINFO_EXTENSION),
             'file_name' => basename($data['link_document']),
@@ -429,7 +443,7 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
     public function renderUpdate()
     {
         $id_data = Tools::getValue($this->identifier);
-    
+
         if (!$id_data) {
             Tools::redirectAdmin($this->context->link->getAdminLink('AdminMenuTabsDocChecker'));
         }
@@ -441,9 +455,17 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
         if (!empty($data['id_customer'])) {
             $customer_data = Db::getInstance()->getRow('
                 SELECT id_customer, firstname, lastname, email, date_add, is_guest, active
-                FROM '._DB_PREFIX_.'customer 
+                FROM '._DB_PREFIX_.'customer
                 WHERE id_customer = '.(int)$data['id_customer']
             );
+        }
+
+        // Récupérer la date de naissance du client
+        $customer_birth_info = null;
+        $has_birth_date = false;
+        if (!empty($data['id_customer'])) {
+            $customer_birth_info = SntDocCheckerCustomer::getByCustomerId($data['id_customer']);
+            $has_birth_date = SntDocCheckerCustomer::hasBirthDate($data['id_customer']);
         }
 
         // Générer le lien temporaire S3 pour l'aperçu
@@ -496,6 +518,8 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
         $this->context->smarty->assign(array(
             'document_data' => $data,
             'customer_data' => $customer_data,
+            'customer_birth_info' => $customer_birth_info,
+            'has_birth_date' => $has_birth_date,
             'temporary_url' => $temporaryUrl,
             'file_extension' => pathinfo($data['link_document'], PATHINFO_EXTENSION),
             'file_name' => basename($data['link_document']),
@@ -992,6 +1016,76 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
         }
     }
 
+    /**
+     * Méthode AJAX pour définir la date de naissance d'un client
+     */
+    public function ajaxProcessSetBirthDate()
+    {
+        try {
+            $customerId = (int)Tools::getValue('id_customer');
+            $birthDate = Tools::getValue('birth_date');
+
+            if (!$customerId) {
+                header('Content-Type: application/json');
+                die(json_encode(array(
+                    'success' => false,
+                    'message' => 'ID client manquant'
+                )));
+            }
+
+            if (!$birthDate) {
+                header('Content-Type: application/json');
+                die(json_encode(array(
+                    'success' => false,
+                    'message' => 'Date de naissance manquante'
+                )));
+            }
+
+            // Valider le format de date
+            if (!DateTime::createFromFormat('Y-m-d', $birthDate)) {
+                header('Content-Type: application/json');
+                die(json_encode(array(
+                    'success' => false,
+                    'message' => 'Format de date invalide'
+                )));
+            }
+
+            // Valider que la date est dans le passé
+            $birthDateTime = new DateTime($birthDate);
+            $now = new DateTime();
+            if ($birthDateTime >= $now) {
+                header('Content-Type: application/json');
+                die(json_encode(array(
+                    'success' => false,
+                    'message' => 'La date de naissance doit être dans le passé'
+                )));
+            }
+
+            // Mettre à jour la date de naissance
+            $result = SntDocCheckerCustomer::updateBirthDate($customerId, $birthDate);
+
+            if ($result) {
+                header('Content-Type: application/json');
+                die(json_encode(array(
+                    'success' => true,
+                    'message' => 'Date de naissance mise à jour avec succès'
+                )));
+            } else {
+                header('Content-Type: application/json');
+                die(json_encode(array(
+                    'success' => false,
+                    'message' => 'Erreur lors de la mise à jour de la date de naissance'
+                )));
+            }
+        } catch (Exception $e) {
+            header('Content-Type: application/json');
+            die(json_encode(array(
+                'success' => false,
+                'message' => $e->getMessage()
+            )));
+        }
+    }
+
     public function postProcess()
     {
         // Create document
@@ -1079,9 +1173,24 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
             $send_email = Tools::getValue('send_email');
 
             // Récupérer l'ancien statut pour comparaison
-            $old_data = Db::getInstance()->getRow('SELECT statut_document, id_customer FROM '._DB_PREFIX_.'snt_doc_checker_data WHERE id_data = '.(int)$id_data);
+            $old_data = Db::getInstance()->getRow('SELECT statut_document, id_customer, dte_expiration FROM '._DB_PREFIX_.'snt_doc_checker_data WHERE id_data = '.(int)$id_data);
             $old_statut = $old_data['statut_document'];
             $id_customer = $old_data['id_customer'];
+
+            // Validation: La date de naissance du client est OBLIGATOIRE
+            if (!SntDocCheckerCustomer::hasBirthDate($id_customer)) {
+                $this->errors[] = 'La date de naissance du client est obligatoire pour enregistrer ce document. Veuillez la renseigner.';
+                return;
+            }
+
+            // Validation: La date d'expiration est OBLIGATOIRE pour valider un document (statut "valid")
+            if ($statut_document == 'valid') {
+                $dte_expiration = $old_data['dte_expiration'];
+                if (empty($dte_expiration) || $dte_expiration == '0000-00-00') {
+                    $this->errors[] = 'La date d\'expiration est obligatoire pour valider un document. Veuillez la définir avant de passer le statut en "Validé".';
+                    return;
+                }
+            }
 
             $data = array(
                 'link_document' => pSQL($link_document),
@@ -1092,6 +1201,45 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
             );
             
             Db::getInstance()->update('snt_doc_checker_data', $data, 'id_data = '.(int)$id_data);
+
+            // Synchroniser le statut avec le document lié (recto/verso)
+            if ($statut_document != $old_statut) {
+                // Vérifier si ce document est principal (a un document associé)
+                $associatedDoc = Db::getInstance()->getRow('
+                    SELECT id_document_associe
+                    FROM ' . _DB_PREFIX_ . 'snt_doc_checker_doc_association
+                    WHERE id_document_principal = ' . (int)$id_data
+                );
+
+                if ($associatedDoc) {
+                    // Mettre à jour le statut du document associé
+                    Db::getInstance()->update('snt_doc_checker_data',
+                        array(
+                            'statut_document' => pSQL($statut_document),
+                            'dte_update' => date('Y-m-d')
+                        ),
+                        'id_data = ' . (int)$associatedDoc['id_document_associe']
+                    );
+                } else {
+                    // Vérifier si ce document est associé (a un document principal)
+                    $principalDoc = Db::getInstance()->getRow('
+                        SELECT id_document_principal
+                        FROM ' . _DB_PREFIX_ . 'snt_doc_checker_doc_association
+                        WHERE id_document_associe = ' . (int)$id_data
+                    );
+
+                    if ($principalDoc) {
+                        // Mettre à jour le statut du document principal
+                        Db::getInstance()->update('snt_doc_checker_data',
+                            array(
+                                'statut_document' => pSQL($statut_document),
+                                'dte_update' => date('Y-m-d')
+                            ),
+                            'id_data = ' . (int)$principalDoc['id_document_principal']
+                        );
+                    }
+                }
+            }
 
             // Envoyer un email si demandé et si le statut a changé
             if ($send_email && $statut_document != $old_statut && !empty($id_customer)) {

@@ -23,13 +23,13 @@
                     {l s='Cette commande contient des produits soumis à restriction. Veuillez vérifier les pièces justificatives du client.' mod='snt_doc_checker'}
                 </div>
             {/if}
-            
+
             {if isset($has_documents_without_expiration) && $has_documents_without_expiration}
                 <div class="alert alert-danger">
                     {l s='Certains documents ne possèdent pas de date d\'expiration. Veuillez compléter cette information pour une meilleure gestion des documents.' mod='snt_doc_checker'}
                 </div>
             {/if}
-            
+
             <div class="table-responsive">
                 <table class="table">
                     <thead>
@@ -53,9 +53,10 @@
                                     </span>
                                 </td>
                                 <td>{$document.upload_date|date_format:"%d/%m/%Y"}</td>
-                                <td>{$document.expiration_date}</td>
+                                <td>{$document.dte_expiration}</td>
                                 <td>
-                                    <a href="{$document.edit_url}" class="btn btn-link" title="{l s='Éditer' mod='snt_doc_checker'}">
+                                    <a href="{$document.edit_url}" class="btn btn-link"
+                                        title="{l s='Éditer' mod='snt_doc_checker'}">
                                         <i class="material-icons">edit</i>
                                     </a>
                                 </td>

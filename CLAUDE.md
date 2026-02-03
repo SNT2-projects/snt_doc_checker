@@ -127,6 +127,17 @@ snt_doc_checker/
 | id_document_associe | INT(11) | Document verso |
 | date_add | DATETIME | Date création |
 
+### `ps_snt_doc_checker_customer` (Infos client - v1.3.0)
+| Colonne | Type | Description |
+|---------|------|-------------|
+| id_customer_info | INT(11) PK | ID auto-incrémenté |
+| id_customer | INT(11) UNIQUE | ID client PrestaShop |
+| birth_date | DATE NULL | Date de naissance (obligatoire en BO) |
+| date_add | DATETIME | Date création |
+| date_upd | DATETIME | Date mise à jour |
+
+**Note:** Une seule ligne par client. La date de naissance est partagée par tous ses documents.
+
 ---
 
 ## Types de Documents
@@ -291,7 +302,7 @@ snt_doc_checker/
 - Auto-nettoyage logs > 5MB
 
 ### Conventions
-- Version actuelle: **1.2.0**
+- Version actuelle: **1.3.0**
 - Préfixe config: `SNT_DOC_CHECKER_`
 - Préfixe tables: `ps_snt_doc_checker_`
 - Langue: Français uniquement
@@ -332,12 +343,14 @@ snt_doc_checker/
 | Date | Version | Demande | Statut |
 |------|---------|---------|--------|
 | 2026-02-03 | 1.2.0 | Renommer références tag_checker → snt_doc_checker | ✅ Fait |
+| 2026-02-03 | 1.3.0 | Date naissance client + Date expiration obligatoire | ✅ Fait |
+| 2026-02-03 | 1.3.0 | Synchronisation statut entre documents liés (recto/verso) | ✅ Fait |
 
 ---
 
 ## Notes Importantes
 
-1. **Association recto/verso:** Le document principal (recto) gère la date d'expiration. Quand il expire, le verso expire aussi automatiquement.
+1. **Association recto/verso:** Le document principal (recto) gère la date d'expiration. Quand il expire, le verso expire aussi automatiquement. **De plus, quand on change le statut d'un document lié, l'autre document est automatiquement mis à jour avec le même statut.**
 
 2. **Catégories C et D:** Les produits sont identifiés via des valeurs de caractéristiques PrestaShop. Les IDs sont configurés dans le BO.
 
@@ -346,3 +359,7 @@ snt_doc_checker/
 4. **S3:** Compatible Scaleway (pas AWS natif). Utilise signature v2, pas v4.
 
 5. **Pas de suppression à la désinstallation:** Le fichier `uninstall.php` ne supprime PAS les données (tables conservées).
+
+6. **Validation obligatoire (v1.3.0):**
+   - **Date de naissance:** BLOQUE la sauvegarde d'un document si non renseignée (liée au client, pas au document)
+   - **Date d'expiration:** BLOQUE la validation (statut "valid") si non renseignée

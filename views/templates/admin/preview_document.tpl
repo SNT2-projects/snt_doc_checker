@@ -1,6 +1,29 @@
 {* Template pour l'aperçu du document avec navigation, rotation et zoom *}
 <div class="document-preview-container">
     {if isset($document_data) && $document_data}
+        {* Bannière d'alerte si la date de naissance n'est pas renseignée (mode édition) *}
+        {if isset($is_edit_mode) && $is_edit_mode && isset($has_birth_date) && !$has_birth_date}
+            <div class="alert alert-danger" style="margin-bottom: 15px;">
+                <strong><i class="icon-exclamation-triangle"></i> ATTENTION:</strong>
+                La date de naissance du client n'est pas renseignée.
+                Elle est <strong>obligatoire</strong> pour pouvoir enregistrer les modifications sur ce document.
+                <button type="button" class="btn btn-warning btn-sm pull-right" onclick="openBirthDateModal({$document_data.id_customer})">
+                    <i class="icon-calendar"></i> Définir la date de naissance
+                </button>
+                <div class="clearfix"></div>
+            </div>
+        {/if}
+
+        {* Bannière d'info si la date d'expiration n'est pas définie (mode édition) *}
+        {if isset($is_edit_mode) && $is_edit_mode}
+            {if !isset($document_data.dte_expiration) || !$document_data.dte_expiration || $document_data.dte_expiration == '0000-00-00'}
+                <div class="alert alert-warning" style="margin-bottom: 15px;">
+                    <i class="icon-warning"></i> <strong>Information:</strong>
+                    La date d'expiration n'est pas définie. Elle sera <strong>obligatoire</strong> pour valider ce document (statut "Validé").
+                </div>
+            {/if}
+        {/if}
+
         <div class="panel">
             <div class="panel-heading">
                 <i class="icon-eye"></i> Aperçu du document
@@ -143,6 +166,22 @@
                                         <span class="label label-{if $customer_data.active == '1'}success{else}danger{/if}">
                                             {if $customer_data.active == '1'}Actif{else}Inactif{/if}
                                         </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Date de naissance:</strong></td>
+                                    <td>
+                                        {if isset($customer_birth_info) && $customer_birth_info.birth_date && $customer_birth_info.birth_date != '0000-00-00'}
+                                            {$customer_birth_info.birth_date|date_format:"%d/%m/%Y"}
+                                            <span class="label label-success"><i class="icon-check"></i> Renseignée</span>
+                                        {else}
+                                            <span class="label label-danger"><i class="icon-warning"></i> Non renseignée</span>
+                                            {if isset($is_edit_mode) && $is_edit_mode}
+                                                <button type="button" class="btn btn-xs btn-warning" onclick="openBirthDateModal({$customer_data.id_customer})">
+                                                    <i class="icon-calendar"></i> Définir
+                                                </button>
+                                            {/if}
+                                        {/if}
                                     </td>
                                 </tr>
                             </table>
@@ -432,6 +471,44 @@
                     <i class="icon-times"></i> Annuler
                 </button>
                 <button type="button" class="btn btn-primary" onclick="saveExpirationDate()">
+                    <i class="icon-save"></i> Enregistrer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{* Modal pour définir la date de naissance du client *}
+<div class="modal fade" id="birthDateModal" tabindex="-1" role="dialog" aria-labelledby="birthDateModalLabel">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+                <h4 class="modal-title" id="birthDateModalLabel">
+                    <i class="icon-calendar"></i> Définir la date de naissance du client
+                </h4>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="icon-info-circle"></i>
+                    La date de naissance est liée au client et s'appliquera à tous ses documents.
+                </div>
+                <form id="birthDateForm">
+                    <div class="form-group">
+                        <label for="birthDate">Date de naissance:</label>
+                        <input type="date" class="form-control" id="birthDate" name="birth_date" required>
+                        <small class="help-block">Sélectionnez la date de naissance du client</small>
+                    </div>
+                    <input type="hidden" id="customerIdForBirthDate" name="id_customer">
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">
+                    <i class="icon-times"></i> Annuler
+                </button>
+                <button type="button" class="btn btn-primary" onclick="saveBirthDate()">
                     <i class="icon-save"></i> Enregistrer
                 </button>
             </div>
@@ -1073,12 +1150,12 @@ function setExpirationDate(documentId) {
 function saveExpirationDate() {
     var documentId = $('#documentIdForExpiration').val();
     var expirationDate = $('#expirationDate').val();
-    
+
     if (!expirationDate) {
         alert('Veuillez sélectionner une date d\'expiration');
         return;
     }
-    
+
     $.ajax({
         url: '{$link->getAdminLink("AdminMenuTabsDocChecker")}',
         type: 'POST',
@@ -1095,6 +1172,55 @@ function saveExpirationDate() {
                 location.reload(); // Recharger la page pour voir les changements
             } else {
                 alert('Erreur: ' + (response.message || 'Impossible de définir la date d\'expiration'));
+            }
+        },
+        error: function() {
+            alert('Erreur de communication avec le serveur');
+        }
+    });
+}
+
+// Fonction pour ouvrir la modal de définition de date de naissance
+function openBirthDateModal(customerId) {
+    $('#customerIdForBirthDate').val(customerId);
+    $('#birthDate').val('');
+    $('#birthDateModal').modal('show');
+}
+
+// Fonction pour sauvegarder la date de naissance
+function saveBirthDate() {
+    var customerId = $('#customerIdForBirthDate').val();
+    var birthDate = $('#birthDate').val();
+
+    if (!birthDate) {
+        alert('Veuillez sélectionner une date de naissance');
+        return;
+    }
+
+    // Valider que la date est dans le passé
+    var selectedDate = new Date(birthDate);
+    var today = new Date();
+    if (selectedDate >= today) {
+        alert('La date de naissance doit être dans le passé');
+        return;
+    }
+
+    $.ajax({
+        url: '{$link->getAdminLink("AdminMenuTabsDocChecker")}',
+        type: 'POST',
+        data: {
+            ajax: true,
+            action: 'setBirthDate',
+            id_customer: customerId,
+            birth_date: birthDate
+        },
+        dataType: 'json',
+        success: function(response) {
+            if (response.success) {
+                $('#birthDateModal').modal('hide');
+                location.reload(); // Recharger la page pour voir les changements
+            } else {
+                alert('Erreur: ' + (response.message || 'Impossible de définir la date de naissance'));
             }
         },
         error: function() {
