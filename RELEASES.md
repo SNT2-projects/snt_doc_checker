@@ -1,64 +1,95 @@
 # Historique des Versions - snt_doc_checker
 
-## Version 1.4.0 (2026-02-03)
+## Version 1.4.0 (2026-02-04)
+
+### Resume pour les equipes
+
+Cette version ajoute l'attribution automatique de statuts de commande selon la categorie de produits (C ou D) et les documents du client.
 
 ### Nouvelles fonctionnalites
 
-#### Statuts de commande separes pour Categorie C et D
-- **Avant:** Un seul statut "Demande de pieces" pour toutes les commandes avec produits restreints
-- **Apres:** Deux statuts distincts configurables :
-  - `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_C` → "Demande de pieces : Categorie C"
-  - `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D` → "Demande de pieces : Categorie D"
-- **Regle de priorite:** Si une commande contient des produits C ET D, le statut D est applique (prioritaire)
+- **Regle de priorite :** Si une commande contient des produits C ET D, le statut C est applique (plus restrictif)
 
-#### Statut "Pieces validees" automatique
-- **Nouveau champ:** `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES`
-- **Logique:** Si le client a deja des documents avec `statut_document = 'valid'`, le statut "Pieces validees" est automatiquement applique au lieu de "Demande de pieces"
-- **Nouvelle methode:** `customerHasValidDocuments($idCustomer)` - verifie en base si le client possede des documents valides
+#### 2. Statut "Pieces validees" automatique
 
-#### Correction du timing des statuts
-- **Probleme:** Le statut "Demande de pieces" etait ajoute AVANT le statut de paiement (ex: "En attente de virement bancaire")
-- **Solution:** Changement du hook de `actionValidateOrder` vers `actionOrderStatusPostUpdate`
-- **Resultat:** Le statut du module est maintenant ajoute EN DERNIER dans l'historique de la commande
+- **Configuration :** `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES` → ID du statut "Pieces validees"
+- **Logique :** Si le client a deja des documents valides en base (`statut_document = 'valid'`), le statut "Pieces validees" est applique automatiquement au lieu de "Demande de pieces"
 
-### Modifications techniques
+#### 3. Statuts declencheurs configurables
 
-#### Fichiers modifies
+- **Configuration :** `SNT_DOC_CHECKER_TRIGGER_STATUSES` → Liste d'IDs separes par virgules
+- **Valeur recommandee :** `2,10` (Paiement accepte + En attente de virement bancaire)
+- **Fonctionnement :** Le module n'ajoute son statut QUE lorsqu'un de ces statuts est applique a la commande
+
+**IMPORTANT :** Ne PAS inclure les statuts intermediaires comme "En attente de paiement PayPal" pour eviter les problemes de timing.
+
+### Configuration requise (Back-Office)
+
+Aller dans **Modules > Doc Checker > Configuration > Onglet Restrictions** :
+
+| Champ | Description | Exemple |
+|-------|-------------|---------|
+| ID categorie C | ID de la feature_value pour la categorie C | 45 |
+| ID categorie D | ID de la feature_value pour la categorie D | 46 |
+| ID statut "Demande pieces : Cat C" | ID du statut PrestaShop | 15 |
+| ID statut "Demande pieces : Cat D" | ID du statut PrestaShop | 16 |
+| ID statut "Pieces validees" | ID du statut PrestaShop | 17 |
+| Statuts declencheurs | IDs separes par virgules | 2,10 |
+
+### Logique de fonctionnement
+
+```
+Quand un statut est ajoute a une commande :
+
+1. Le statut est-il un declencheur configure (ex: 2 ou 10) ?
+   NON → Rien faire
+   OUI → Continuer
+
+2. Notre statut existe deja dans l'historique ?
+   OUI → Rien faire (eviter doublon)
+   NON → Continuer
+
+3. La commande contient des produits de categorie C ou D ?
+   NON → Rien faire
+   OUI → Continuer
+
+4. Determiner le statut selon les regles :
+
+   CATEGORIE C (prioritaire si mixte C+D) :
+   |-- Client >= 18 ans ET (permis chasse OU licence FFTir valide) ?
+       OUI → "Pieces validees"
+       NON → "Demande de pieces : Categorie C"
+
+   CATEGORIE D :
+   |-- Client >= 18 ans ?
+       OUI → "Pieces validees"
+       NON → "Demande de pieces : Categorie D"
+
+5. Forcer le current_state a la fin du script (compatibilite PayPal)
+```
+
+### Nouvelles methodes ajoutees
+
+| Methode | Description |
+|---------|-------------|
+| `getCustomerAge($idCustomer)` | Calcule l'age du client depuis `ps_snt_doc_checker_customer.birth_date` |
+| `customerHasValidHuntingOrShootingLicense($idCustomer)` | Verifie si le client a un document pc/vpc/lfft valide et non expire |
+
+### Fichiers modifies
 
 | Fichier | Modification |
 |---------|--------------|
-| `snt_doc_checker.php` | Hook change, nouvelles configs, nouvelle methode `customerHasValidDocuments()` |
-| `upgrade/upgrade-1.4.0.php` | Migration du hook + migration de l'ancienne config vers les nouvelles |
+| `snt_doc_checker.php` | Hook `actionObjectOrderHistoryAddAfter`, logique statuts, `register_shutdown_function()` |
+| `upgrade/upgrade-1.4.0.php` | Migration hooks + migration ancienne config |
 
-#### Configuration (onglet Restrictions)
+### Migration depuis v1.3.0
 
-| Cle | Description |
-|-----|-------------|
-| `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_C` | ID du statut "Demande de pieces : Categorie C" |
-| `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D` | ID du statut "Demande de pieces : Categorie D" |
-| `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES` | ID du statut "Pieces validees" |
-
-#### Logique du hook `hookActionOrderStatusPostUpdate()`
-
-```
-1. Commande avec produit categorie C ou D ?
-   |-- NON → Ne rien faire
-   |-- OUI → Continuer
-
-2. Client a des documents valides ?
-   |-- OUI → Appliquer statut "Pieces validees"
-   |-- NON → Continuer
-
-3. Produit categorie D present ?
-   |-- OUI → Appliquer statut "Demande de pieces : Categorie D"
-   |-- NON → Appliquer statut "Demande de pieces : Categorie C"
-```
-
-#### Script d'upgrade 1.4.0
-
-- Desenregistre l'ancien hook `actionValidateOrder`
-- Enregistre le nouveau hook `actionOrderStatusPostUpdate`
-- Migre l'ancienne config `SNT_DOC_CHECKER_ORDER_STATUS_PIECES` vers les deux nouvelles (C et D)
+1. **Automatique :** L'ancienne config `SNT_DOC_CHECKER_ORDER_STATUS_PIECES` est migree vers `_PIECES_C` et `_PIECES_D`
+2. **Manuel :** Configurer les nouveaux champs dans le BO (voir tableau ci-dessus)
+3. **Manuel :** Creer les statuts PrestaShop si necessaire :
+   - "Demande de pieces : Categorie C"
+   - "Demande de pieces : Categorie D"
+   - "Pieces validees"
 
 ---
 
@@ -125,23 +156,24 @@
 
 ---
 
-## Resume des configurations
+## Resume des configurations (v1.4.0)
 
-### Onglet Restrictions (v1.4.0)
+### Onglet Restrictions
 
-| Cle | Description |
-|-----|-------------|
-| `SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_C` | ID feature_value categorie C |
-| `SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_D` | ID feature_value categorie D |
-| `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_C` | ID statut "Demande de pieces : Categorie C" |
-| `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D` | ID statut "Demande de pieces : Categorie D" |
-| `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES` | ID statut "Pieces validees" |
+| Cle | Description | Exemple |
+|-----|-------------|---------|
+| `SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_C` | ID feature_value categorie C | 45 |
+| `SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_D` | ID feature_value categorie D | 46 |
+| `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_C` | ID statut "Demande de pieces : Categorie C" | 15 |
+| `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D` | ID statut "Demande de pieces : Categorie D" | 16 |
+| `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES` | ID statut "Pieces validees" | 17 |
+| `SNT_DOC_CHECKER_TRIGGER_STATUSES` | IDs des statuts declencheurs | 2,10 |
 
-### Hooks enregistres (v1.4.0)
+### Hooks enregistres
 
 | Hook | Description |
 |------|-------------|
-| `actionOrderStatusPostUpdate` | Changement automatique statut commande (apres statut paiement) |
+| `actionObjectOrderHistoryAddAfter` | Attribution automatique du statut selon categorie C/D |
 | `displayAdminOrder` | Affichage documents sur page commande BO |
 | `displayTagCommentOrder` | Avertissement categorie C/D dans tunnel |
 | `displayCustomerAccount` | Lien vers upload documents |
@@ -154,14 +186,27 @@
 
 ### De 1.3.0 vers 1.4.0
 
-1. L'ancienne config `SNT_DOC_CHECKER_ORDER_STATUS_PIECES` est automatiquement migree vers `_PIECES_C` et `_PIECES_D`
-2. Configurer les nouveaux IDs de statut dans le BO :
-   - ID du statut "Demande de pieces : Categorie C"
-   - ID du statut "Demande de pieces : Categorie D"
-   - ID du statut "Pieces validees"
+1. **Automatique :** L'ancienne config `SNT_DOC_CHECKER_ORDER_STATUS_PIECES` est migree vers `_PIECES_C` et `_PIECES_D`
+2. **Manuel :** Configurer les nouveaux IDs de statut dans le BO
+3. **Manuel :** Configurer `SNT_DOC_CHECKER_TRIGGER_STATUSES` avec `2,10`
+4. **Manuel :** Desactiver/reactiver le module pour enregistrer le nouveau hook
 
 ### De < 1.3.0 vers 1.3.0
 
 1. La table `ps_snt_doc_checker_customer` est creee automatiquement
 2. Les clients existants auront `birth_date = NULL`
 3. La date de naissance devra etre saisie lors de la premiere modification d'un document
+
+---
+
+## Statuts PrestaShop a creer
+
+Pour que le module fonctionne, creer ces statuts dans **Commandes > Statuts** :
+
+| Nom du statut | Couleur suggeree | Envoyer email |
+|---------------|------------------|---------------|
+| Demande de pieces : Categorie C | Orange | Oui (template: pieces_categorie_c) |
+| Demande de pieces : Categorie D | Orange | Oui (template: pieces_categorie_d) |
+| Pieces validees | Vert | Non |
+
+Ensuite, reporter les IDs de ces statuts dans la configuration du module.

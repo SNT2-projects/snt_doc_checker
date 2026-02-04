@@ -1170,7 +1170,9 @@ class Snt_doc_checker extends Module
      * et ajoute automatiquement le statut approprié :
      * - "Pièces validées" si le client a déjà des documents valides
      * - "Demande de pièces : Catégorie C/D" sinon
-     * Ne se déclenche QUE si le statut ajouté est un statut déclencheur configuré
+     *
+     * Ne se déclenche QUE sur les statuts déclencheurs configurés (ex: 2,10 pour
+     * "Paiement accepté" et "En attente de virement bancaire")
      */
     public function hookActionObjectOrderHistoryAddAfter($params)
     {
@@ -1183,19 +1185,14 @@ class Snt_doc_checker extends Module
         $idOrder = (int)$orderHistory->id_order;
         $newStatusId = (int)$orderHistory->id_order_state;
 
-        // Récupérer les statuts déclencheurs configurés
+        // Vérifier si le statut ajouté est un statut déclencheur configuré
         $triggerStatusesConfig = Configuration::get('SNT_DOC_CHECKER_TRIGGER_STATUSES');
         if (empty($triggerStatusesConfig)) {
-            // Si aucun statut déclencheur n'est configuré, ne rien faire
             return;
         }
 
-        // Parser les IDs des statuts déclencheurs (séparés par des virgules)
         $triggerStatuses = array_map('intval', array_filter(explode(',', $triggerStatusesConfig)));
-
-        // Vérifier si le nouveau statut est un statut déclencheur
         if (!in_array($newStatusId, $triggerStatuses)) {
-            // Le statut appliqué n'est pas un déclencheur, ne rien faire
             return;
         }
 
@@ -1204,7 +1201,6 @@ class Snt_doc_checker extends Module
         $orderStatusPiecesD = (int)Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D');
         $orderStatusPiecesValides = (int)Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES');
 
-        // Si aucun statut n'est configuré, ne rien faire
         if (!$orderStatusPiecesC && !$orderStatusPiecesD && !$orderStatusPiecesValides) {
             return;
         }
@@ -1213,7 +1209,6 @@ class Snt_doc_checker extends Module
         $categorieC = (int)Configuration::get('SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_C');
         $categorieD = (int)Configuration::get('SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_D');
 
-        // Si aucune catégorie n'est configurée, ne rien faire
         if (!$categorieC && !$categorieD) {
             return;
         }
@@ -1224,93 +1219,124 @@ class Snt_doc_checker extends Module
             return;
         }
 
-        // Vérifier si un de nos statuts est déjà dans l'historique
+        // Vérifier si notre statut est déjà dans l'historique
+        $ourStatuses = array_filter([$orderStatusPiecesC, $orderStatusPiecesD, $orderStatusPiecesValides]);
         $history = $order->getHistory($this->context->language->id);
+
         foreach ($history as $historyItem) {
-            $historyStatusId = (int)$historyItem['id_order_state'];
-            if (($orderStatusPiecesC && $historyStatusId == $orderStatusPiecesC) ||
-                ($orderStatusPiecesD && $historyStatusId == $orderStatusPiecesD) ||
-                ($orderStatusPiecesValides && $historyStatusId == $orderStatusPiecesValides)) {
-                // Notre statut est déjà présent, ne pas le rajouter
+            if (in_array((int)$historyItem['id_order_state'], $ourStatuses)) {
+                // Notre statut existe déjà, ne pas le rajouter
                 return;
             }
         }
 
-        // Récupérer les produits de la commande
+        // Vérifier si la commande contient des produits de catégorie C ou D
         $products = $order->getProducts();
         $hasCategorieC = false;
         $hasCategorieD = false;
 
         foreach ($products as $product) {
-            // Récupérer les caractéristiques du produit
             $features = Product::getFeaturesStatic((int)$product['product_id']);
-
             foreach ($features as $feature) {
                 $featureValueId = (int)$feature['id_feature_value'];
-
-                // Vérifier catégorie C
                 if ($categorieC && $featureValueId == $categorieC) {
                     $hasCategorieC = true;
                 }
-
-                // Vérifier catégorie D
                 if ($categorieD && $featureValueId == $categorieD) {
                     $hasCategorieD = true;
                 }
             }
         }
 
-        // Si aucun produit de catégorie C ou D, ne rien faire
         if (!$hasCategorieC && !$hasCategorieD) {
             return;
         }
 
-        // Vérifier si le client a des documents valides
-        $hasValidDocuments = $this->customerHasValidDocuments((int)$order->id_customer);
+        // Récupérer l'âge du client
+        $customerAge = $this->getCustomerAge((int)$order->id_customer);
+        $isAdult = ($customerAge !== null && $customerAge >= 18);
 
-        // Déterminer quel statut appliquer
+        // Déterminer quel statut appliquer selon les nouvelles règles
         $statusToApply = 0;
 
-        if ($hasValidDocuments && $orderStatusPiecesValides) {
-            // Le client a des documents valides → statut "Pièces validées"
-            $statusToApply = $orderStatusPiecesValides;
-        } elseif ($hasCategorieD && $orderStatusPiecesD) {
-            // D est prioritaire (pas de documents valides)
-            $statusToApply = $orderStatusPiecesD;
-        } elseif ($hasCategorieC && $orderStatusPiecesC) {
-            // Seulement C (pas de documents valides)
-            $statusToApply = $orderStatusPiecesC;
+        // Règle Catégorie C (prioritaire car plus restrictive)
+        if ($hasCategorieC) {
+            // Cat C : Pièces validées SI +18 ans ET (permis chasse OU licence FFTir valide)
+            if ($isAdult && $this->customerHasValidHuntingOrShootingLicense((int)$order->id_customer)) {
+                $statusToApply = $orderStatusPiecesValides;
+            } else {
+                $statusToApply = $orderStatusPiecesC;
+            }
+        }
+        // Règle Catégorie D (si pas de produit Cat C)
+        elseif ($hasCategorieD) {
+            // Cat D : Pièces validées SI +18 ans
+            if ($isAdult) {
+                $statusToApply = $orderStatusPiecesValides;
+            } else {
+                $statusToApply = $orderStatusPiecesD;
+            }
         }
 
-        // Si un statut doit être appliqué
+        // Appliquer le statut
         if ($statusToApply) {
-            // Attendre 2 secondes pour garantir que notre statut ait un timestamp plus récent
-            sleep(2);
+            $newOrderHistory = new OrderHistory();
+            $newOrderHistory->id_order = $idOrder;
+            $newOrderHistory->id_employee = 0;
+            $newOrderHistory->changeIdOrderState($statusToApply, $idOrder);
+            $newOrderHistory->addWithemail();
 
-            // Créer un nouvel historique de commande avec timestamp forcé
-            $orderHistory = new OrderHistory();
-            $orderHistory->id_order = $idOrder;
-            $orderHistory->id_employee = 0; // Automatique (pas d'employé)
-            // Forcer le timestamp à maintenant (après le sleep)
-            $orderHistory->date_add = date('Y-m-d H:i:s');
-            $orderHistory->changeIdOrderState($statusToApply, $idOrder);
-            $orderHistory->addWithemail(); // Envoie l'email associé au statut
+            // Forcer la mise à jour du current_state à la FIN du script PHP
+            // (après que PayPal/autre module ait terminé son traitement)
+            register_shutdown_function(function () use ($idOrder, $statusToApply) {
+                Db::getInstance()->execute(
+                    'UPDATE `' . _DB_PREFIX_ . 'orders` SET `current_state` = ' . (int)$statusToApply . ' WHERE `id_order` = ' . (int)$idOrder
+                );
+            });
         }
     }
 
     /**
-     * Vérifie si un client a au moins un document valide (statut = 'valid')
+     * Calcule l'âge du client à partir de sa date de naissance
+     *
+     * @param int $idCustomer
+     * @return int|null Âge en années, ou null si date de naissance non renseignée
+     */
+    private function getCustomerAge($idCustomer)
+    {
+        $birthDate = Db::getInstance()->getValue('
+            SELECT birth_date
+            FROM ' . _DB_PREFIX_ . 'snt_doc_checker_customer
+            WHERE id_customer = ' . (int)$idCustomer
+        );
+
+        if (!$birthDate || $birthDate === '0000-00-00') {
+            return null;
+        }
+
+        $birth = new DateTime($birthDate);
+        $today = new DateTime();
+        $age = $today->diff($birth)->y;
+
+        return $age;
+    }
+
+    /**
+     * Vérifie si un client a un permis de chasse (pc) ou une licence FFTir (lfft)
+     * valide et non expiré
      *
      * @param int $idCustomer
      * @return bool
      */
-    private function customerHasValidDocuments($idCustomer)
+    private function customerHasValidHuntingOrShootingLicense($idCustomer)
     {
         $count = Db::getInstance()->getValue('
             SELECT COUNT(*)
             FROM ' . _DB_PREFIX_ . 'snt_doc_checker_data
             WHERE id_customer = ' . (int)$idCustomer . '
             AND statut_document = "valid"
+            AND type_document IN ("pc", "lfft", "vpc")
+            AND (dte_expiration IS NULL OR dte_expiration >= CURDATE())
         ');
 
         return (int)$count > 0;
