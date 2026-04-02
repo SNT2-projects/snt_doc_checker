@@ -1,6 +1,6 @@
 Cher client,
 
-nous vous remercions vivement d’avoir fait confiance à Tom Airgun pour votre commande et espérons que vous en serez pleinement satisfait. 
+nous vous remercions vivement d’avoir fait confiance à {shop_name} pour votre commande et espérons que vous en serez pleinement satisfait. 
 
 Votre commande contient un ou plusieurs produits réglementés à la vente, en l’occurrence une arme de catégorie C qui nécessitent des justificatifs de votre part. 
 
@@ -8,9 +8,9 @@ Dans le cadre de cette vente, pourriez-vous s'il vous plait nous faire parvenir 
 
 Une fois la bonne réception de ces justificatifs par nos services, votre commande sera expédiée à l’adresse que vous avez choisie via le service de livraison sélectionné par vos soins.  
 
-Si à l’avenir, vous effectuez une nouvelle commande sur Tom-Airgun, votre compte sera « certifié » pour l’année en cours. 
+Si à l’avenir, vous effectuez une nouvelle commande sur {shop_name}, votre compte sera « certifié » pour l’année en cours. 
 
 Si vous avez la moindre interrogation, notre service téléphonique est disponible au 02 35 00 30 02
 
 Nous sommes ravis de vous compter parmi nos clients et vous souhaitons des bons moments avec vos produits. 
-L’équipe TOM-Airgun
+L’équipe {shop_name}

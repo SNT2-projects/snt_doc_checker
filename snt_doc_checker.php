@@ -46,7 +46,7 @@ class Snt_doc_checker extends Module
     {
         $this->name = 'snt_doc_checker';
         $this->tab = 'administration';
-        $this->version = '1.4.0';
+        $this->version = '1.5.0';
         $this->author = 'SNT2';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -348,6 +348,14 @@ class Snt_doc_checker extends Module
             [
                 'tab' => 'restrictions',
                 'type' => 'text',
+                'label' => $this->l('ID de la marque FX Airguns'),
+                'name' => 'SNT_DOC_CHECKER_BRAND_FX_AIRGUNS',
+                'desc' => $this->l('ID du fabricant (manufacturer) FX Airguns. Les produits de cette marque seront traités comme catégorie C.'),
+                'size' => 50
+            ],
+            [
+                'tab' => 'restrictions',
+                'type' => 'text',
                 'label' => $this->l('ID du statut "Demande de pièces : Catégorie C"'),
                 'name' => 'SNT_DOC_CHECKER_ORDER_STATUS_PIECES_C',
                 'desc' => $this->l('ID du statut de commande à appliquer automatiquement quand une commande contient des produits de catégorie C'),
@@ -472,6 +480,7 @@ class Snt_doc_checker extends Module
             // Restrictions
             'SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_C' => Configuration::get('SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_C', ''),
             'SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_D' => Configuration::get('SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_D', ''),
+            'SNT_DOC_CHECKER_BRAND_FX_AIRGUNS' => Configuration::get('SNT_DOC_CHECKER_BRAND_FX_AIRGUNS', ''),
             'SNT_DOC_CHECKER_ORDER_STATUS_PIECES_C' => Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_PIECES_C', ''),
             'SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D' => Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D', ''),
             'SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES' => Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES', ''),
@@ -1205,11 +1214,12 @@ class Snt_doc_checker extends Module
             return;
         }
 
-        // Récupérer les IDs des catégories restreintes
+        // Récupérer les IDs des catégories restreintes et de la marque FX Airguns
         $categorieC = (int)Configuration::get('SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_C');
         $categorieD = (int)Configuration::get('SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_D');
+        $brandFxAirguns = (int)Configuration::get('SNT_DOC_CHECKER_BRAND_FX_AIRGUNS');
 
-        if (!$categorieC && !$categorieD) {
+        if (!$categorieC && !$categorieD && !$brandFxAirguns) {
             return;
         }
 
@@ -1230,12 +1240,14 @@ class Snt_doc_checker extends Module
             }
         }
 
-        // Vérifier si la commande contient des produits de catégorie C ou D
+        // Vérifier si la commande contient des produits de catégorie C, D ou de marque FX Airguns
         $products = $order->getProducts();
         $hasCategorieC = false;
         $hasCategorieD = false;
+        $hasBrandFxAirguns = false;
 
         foreach ($products as $product) {
+            // Vérifier les caractéristiques (catégorie C/D)
             $features = Product::getFeaturesStatic((int)$product['product_id']);
             foreach ($features as $feature) {
                 $featureValueId = (int)$feature['id_feature_value'];
@@ -1246,9 +1258,15 @@ class Snt_doc_checker extends Module
                     $hasCategorieD = true;
                 }
             }
+
+            // Vérifier si le produit est de la marque FX Airguns
+            if ($brandFxAirguns && (int)$product['id_manufacturer'] == $brandFxAirguns) {
+                $hasBrandFxAirguns = true;
+            }
         }
 
-        if (!$hasCategorieC && !$hasCategorieD) {
+        // Si aucune restriction ne s'applique, on ne fait rien
+        if (!$hasCategorieC && !$hasCategorieD && !$hasBrandFxAirguns) {
             return;
         }
 
@@ -1256,19 +1274,16 @@ class Snt_doc_checker extends Module
         $customerAge = $this->getCustomerAge((int)$order->id_customer);
         $isAdult = ($customerAge !== null && $customerAge >= 18);
 
-        // Déterminer quel statut appliquer selon les nouvelles règles
+        // Déterminer quel statut appliquer selon les règles
         $statusToApply = 0;
 
-        // Règle Catégorie C (prioritaire car plus restrictive)
-        if ($hasCategorieC) {
-            // Cat C : Pièces validées SI +18 ans ET (permis chasse OU licence FFTir valide)
-            if ($isAdult && $this->customerHasValidHuntingOrShootingLicense((int)$order->id_customer)) {
-                $statusToApply = $orderStatusPiecesValides;
-            } else {
-                $statusToApply = $orderStatusPiecesC;
-            }
+        // Règle Catégorie C ou marque FX Airguns (prioritaire car plus restrictive)
+        // Les produits FX Airguns sont traités comme catégorie C
+        if ($hasCategorieC || $hasBrandFxAirguns) {
+            // Cat C : TOUJOURS demande de pièces catégorie C (jamais pièces validées)
+            $statusToApply = $orderStatusPiecesC;
         }
-        // Règle Catégorie D (si pas de produit Cat C)
+        // Règle Catégorie D (si pas de produit Cat C ni FX Airguns)
         elseif ($hasCategorieD) {
             // Cat D : Pièces validées SI +18 ans
             if ($isAdult) {

@@ -192,7 +192,11 @@ snt_doc_checker/
 | `SNT_DOC_CHECKER_MESSAGE_TUNNEL_D` | Message catégorie D (HTML) |
 | `SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_C` | ID valeur caractéristique cat. C |
 | `SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_D` | ID valeur caractéristique cat. D |
-| `SNT_DOC_CHECKER_ORDER_STATUS_PIECES` | ID statut "Demande de pièces" (v1.3.0) |
+| `SNT_DOC_CHECKER_BRAND_FX_AIRGUNS` | ID fabricant FX Airguns (traité comme cat. C) (v1.5.0) |
+| `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_C` | ID statut "Demande de pièces : Catégorie C" |
+| `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D` | ID statut "Demande de pièces : Catégorie D" |
+| `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES` | ID statut "Pièces validées" |
+| `SNT_DOC_CHECKER_TRIGGER_STATUSES` | IDs statuts déclencheurs (ex: "2,10") |
 | `SNT_DOC_CHECKER_S3_KEY` | Clé AWS |
 | `SNT_DOC_CHECKER_S3_SECRET` | Secret AWS |
 | `SNT_DOC_CHECKER_S3_BUCKET` | Nom du bucket |
@@ -304,7 +308,7 @@ snt_doc_checker/
 - Auto-nettoyage logs > 5MB
 
 ### Conventions
-- Version actuelle: **1.3.0**
+- Version actuelle: **1.5.0**
 - Préfixe config: `SNT_DOC_CHECKER_`
 - Préfixe tables: `ps_snt_doc_checker_`
 - Langue: Français uniquement
@@ -348,6 +352,9 @@ snt_doc_checker/
 | 2026-02-03 | 1.3.0 | Date naissance client + Date expiration obligatoire | ✅ Fait |
 | 2026-02-03 | 1.3.0 | Synchronisation statut entre documents liés (recto/verso) | ✅ Fait |
 | 2026-02-03 | 1.3.0 | Changement statut automatique commande si produit cat. C/D | ✅ Fait |
+| 2026-04-02 | 1.5.0 | Cat. C : toujours demander pièces (jamais pièces validées) | ✅ Fait |
+| 2026-04-02 | 1.5.0 | Marque FX Airguns traitée comme catégorie C | ✅ Fait |
+| 2026-04-02 | 1.5.0 | Emails dynamiques : nom du site via {shop_name} | ✅ Fait |
 
 ---
 
@@ -367,8 +374,13 @@ snt_doc_checker/
    - **Date de naissance:** BLOQUE la sauvegarde d'un document si non renseignée (liée au client, pas au document)
    - **Date d'expiration:** BLOQUE la validation (statut "valid") si non renseignée
 
-7. **Changement statut automatique commande (v1.3.0):**
-   - Hook `actionValidateOrder` intercepte les commandes validées
-   - Vérifie si les produits ont des feature_values = catégorie C ou D
-   - Si oui, change le statut vers "Demande de pièces" (ID configuré dans `SNT_DOC_CHECKER_ORDER_STATUS_PIECES`)
+7. **Changement statut automatique commande (v1.5.0):**
+   - Hook `actionObjectOrderHistoryAddAfter` intercepte les changements de statut
+   - Se déclenche uniquement sur les statuts déclencheurs configurés (`SNT_DOC_CHECKER_TRIGGER_STATUSES`)
+   - **Catégorie C ou marque FX Airguns** → TOUJOURS "Demande de pièces : Catégorie C" (jamais pièces validées)
+   - **Catégorie D uniquement** → "Pièces validées" si client majeur, sinon "Demande de pièces : Catégorie D"
    - L'email associé au statut est envoyé automatiquement via `addWithemail()`
+
+8. **Emails dynamiques (v1.5.0):**
+   - Les mentions du nom du site utilisent la variable `{shop_name}`
+   - Cette variable prend la valeur du nom de la boutique configuré dans PrestaShop (Paramètres > Contact > Coordonnées)

@@ -124,17 +124,20 @@ class snt_doc_checkeruser_uploaderModuleFrontController extends ModuleFrontContr
     // correctement soumis.
     public function sendEmail($docNum, $docType, $userEmail)
     {
+        $shopName = Configuration::get('PS_SHOP_NAME');
+        $message = "<p>Bonjour,<br>Nous avons bien reçu votre pièce justificative, elle est désormais à l’étude par notre service administratif, nous reviendrons vers vous dans les plus brefs délais à l’issue de cet examen.</p>
+                <p>L’équipe " . $shopName . "</p>";
+
         Mail::Send(
             (int)(Configuration::get('PS_LANG_DEFAULT')), // defaut language id
-            'doc_submited', 
+            'doc_submited',
             'Document correctement soumis',
             array(
                 '{id_doc}'     => $docNum,
                 '{type_doc}'   => $docType,
                 '{statut_doc}' => 'En attente',
                 '{date_doc}'   => date('j/m/Y') . ' à ' . date("H:i."),
-                '{message}'    => "<p>Bonjour,<br>Nous avons bien reçu votre pièce justificative, elle est désormais à l’étude par notre service administratif, nous reviendrons vers vous dans les plus brefs délais à l’issue de cet examen.</p>
-                <p>L'équipe TOM-Arigun</p>"
+                '{message}'    => $message
             ),
             $userEmail, // receiver email address
             NULL,       // receiver name
