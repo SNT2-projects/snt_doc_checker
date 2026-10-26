@@ -19,6 +19,7 @@ Lors de la consultation ou modification d'un document client, **la date de naiss
 
 - Si la date de naissance n'est pas renseignée, une fenêtre s'affiche pour la saisir
 - Cette date est liée au client (pas au document), donc elle n'est à saisir qu'une seule fois par client
+- **Exception (v1.7.1) :** un document peut être passé au statut **"Refusé"** sans date de naissance (par exemple quand le document est refusé justement parce qu'il ne permet pas de lire la date de naissance)
 
 ### Date d'expiration obligatoire pour valider
 

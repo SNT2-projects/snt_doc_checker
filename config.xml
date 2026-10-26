@@ -2,7 +2,7 @@
 <module>
 	<name>snt_doc_checker</name>
 	<displayName><![CDATA[SNT Doc Checker]]></displayName>
-	<version><![CDATA[1.5.1]]></version>
+	<version><![CDATA[1.7.1]]></version>
 	<description><![CDATA[Module de vérification des documents]]></description>
 	<author><![CDATA[SNT2]]></author>
 	<tab><![CDATA[administration]]></tab>

@@ -73,6 +73,42 @@ $sql[] = 'CREATE TABLE IF NOT EXISTS ' . _DB_PREFIX_ . 'snt_doc_checker_logs (
 ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8;';
 
 
+// Table pour les logs des appels API vers l'ERP (Oasis)
+$sql[] = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'snt_doc_checker_erp_logs` (
+    `id_erp_log` int(11) NOT NULL AUTO_INCREMENT,
+    `call_type` varchar(32) NOT NULL,
+    `id_order` int(11) NOT NULL DEFAULT 0,
+    `presta_reference` varchar(64) NOT NULL DEFAULT \'\',
+    `oasis_reference` varchar(64) DEFAULT NULL,
+    `request_url` text,
+    `http_code` int(11) NOT NULL DEFAULT 0,
+    `redirect_url` text,
+    `response_body` text,
+    `error_message` text,
+    `success` tinyint(1) NOT NULL DEFAULT 0,
+    `id_employee` int(11) NOT NULL DEFAULT 0,
+    `employee_name` varchar(255) NOT NULL DEFAULT \'\',
+    `date_add` datetime NOT NULL,
+    PRIMARY KEY (`id_erp_log`),
+    KEY `id_order` (`id_order`)
+) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8;';
+
+
+// Table des commandes débloquées dans l'ERP (persistante, sert à ne plus les
+// proposer dans l'encart "Commandes du client à approuver")
+$sql[] = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'snt_doc_checker_unblocked_orders` (
+    `id_unblocked` int(11) NOT NULL AUTO_INCREMENT,
+    `id_order` int(11) NOT NULL,
+    `presta_reference` varchar(64) NOT NULL DEFAULT \'\',
+    `oasis_reference` varchar(64) DEFAULT NULL,
+    `id_employee` int(11) NOT NULL DEFAULT 0,
+    `employee_name` varchar(255) NOT NULL DEFAULT \'\',
+    `date_add` datetime NOT NULL,
+    PRIMARY KEY (`id_unblocked`),
+    UNIQUE KEY `id_order` (`id_order`)
+) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8;';
+
+
 // Table pour les associations de documents (recto/verso)
 $sql[] = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'snt_doc_checker_doc_association` (
     `id_association` int(11) NOT NULL AUTO_INCREMENT,

@@ -138,6 +138,37 @@ snt_doc_checker/
 
 **Note:** Une seule ligne par client. La date de naissance est partagée par tous ses documents.
 
+### `ps_snt_doc_checker_erp_logs` (Logs des appels API ERP - v1.7.0)
+| Colonne | Type | Description |
+|---------|------|-------------|
+| id_erp_log | INT(11) PK | ID auto-incrémenté |
+| call_type | VARCHAR(32) | `search` (recherche réf. ERP) ou `unblock` (déblocage) |
+| id_order | INT(11) | ID commande Presta |
+| presta_reference | VARCHAR(64) | Référence web Presta (= prestashop_id ERP) |
+| oasis_reference | VARCHAR(64) NULL | Référence ERP (Oasis) |
+| request_url | TEXT | URL appelée (token masqué pour le déblocage) |
+| http_code | INT(11) | Code HTTP retourné |
+| redirect_url | TEXT | Cible de redirection (utile pour diagnostiquer un 3xx) |
+| response_body | TEXT | Corps de réponse brut (tronqué à 5000 car.) |
+| error_message | TEXT NULL | Message d'erreur le cas échéant |
+| success | TINYINT(1) | Succès de l'appel |
+| id_employee / employee_name | INT / VARCHAR | Employé ayant déclenché l'appel |
+| date_add | DATETIME | Date |
+
+**Note:** Purgeable via le bouton "Purger les logs" (TRUNCATE) dans l'onglet de config "ERP / API".
+
+### `ps_snt_doc_checker_unblocked_orders` (Commandes débloquées ERP - v1.7.0)
+| Colonne | Type | Description |
+|---------|------|-------------|
+| id_unblocked | INT(11) PK | ID auto-incrémenté |
+| id_order | INT(11) UNIQUE | ID commande Presta débloquée |
+| presta_reference | VARCHAR(64) | Référence web Presta |
+| oasis_reference | VARCHAR(64) NULL | Référence ERP (Oasis) |
+| id_employee / employee_name | INT / VARCHAR | Employé ayant débloqué |
+| date_add | DATETIME | Date |
+
+**Note:** Table **persistante** (non purgée avec les logs). Une commande présente ici est **exclue** de l'encart "Commandes du client à approuver" — nécessaire car le statut Presta ne change pas au déblocage.
+
 ---
 
 ## Types de Documents
@@ -197,6 +228,10 @@ snt_doc_checker/
 | `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D` | ID statut "Demande de pièces : Catégorie D" |
 | `SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES` | ID statut "Pièces validées" |
 | `SNT_DOC_CHECKER_TRIGGER_STATUSES` | IDs statuts déclencheurs (ex: "2,10") |
+| `SNT_DOC_CHECKER_ORDER_STATUS_OASIS` | ID statut "Importé vers Oasis v2" (filtre encart commandes à approuver) |
+| `SNT_DOC_CHECKER_ORDER_STATUS_APPROVED` | ID statut "Commande approuvée [Doc Checker]" (legacy v1.6.0 ; remplacé par le déblocage ERP en v1.7.0) |
+| `SNT_DOC_CHECKER_ERP_URL` | URL de base de l'ERP (Oasis), sans slash final |
+| `SNT_DOC_CHECKER_ERP_TOKEN` | Clé API ERP (en-tête `x-api-key` pour la recherche, et dans l'URL pour le déblocage) |
 | `SNT_DOC_CHECKER_S3_KEY` | Clé AWS |
 | `SNT_DOC_CHECKER_S3_SECRET` | Secret AWS |
 | `SNT_DOC_CHECKER_S3_BUCKET` | Nom du bucket |
@@ -249,6 +284,8 @@ snt_doc_checker/
 - `linkDocuments` - Associer recto/verso
 - `unlinkDocument` - Dissocier
 - `setExpirationDate` - Définir expiration
+- `applyApprovedStatus` - Applique le statut "Commande approuvée [Doc Checker]" à une commande (legacy v1.6.0, conservé mais non utilisé par le bouton depuis v1.7.0)
+- `unblockOrder` - Débloque une commande via l'API de l'ERP (Oasis) : recherche de la réf. ERP depuis la réf. web Presta, puis appel `DebloquerCommande` (encart page validation document)
 
 ---
 
@@ -308,7 +345,7 @@ snt_doc_checker/
 - Auto-nettoyage logs > 5MB
 
 ### Conventions
-- Version actuelle: **1.5.1**
+- Version actuelle: **1.7.0**
 - Préfixe config: `SNT_DOC_CHECKER_`
 - Préfixe tables: `ps_snt_doc_checker_`
 - Langue: Français uniquement
@@ -355,6 +392,11 @@ snt_doc_checker/
 | 2026-04-02 | 1.5.0 | Cat. C : toujours demander pièces (jamais pièces validées) | ✅ Fait |
 | 2026-04-02 | 1.5.0 | Emails dynamiques : nom du site via {shop_name} | ✅ Fait |
 | 2026-04-03 | 1.5.1 | FX Airguns : suit la catégorisation C/D (contrôle manuel obligatoire) | ✅ Fait |
+| 2026-09-15 | 1.6.0 | Encart "Commandes du client à approuver" sur la page de validation d'un document (bouton statut "Commande approuvée [Doc Checker]" en AJAX, sans email) | ✅ Fait |
+| 2026-09-15 | 1.6.0 | Double bouton d'enregistrement du document : "Enregistrer et rester" + "Enregistrer" | ✅ Fait |
+| 2026-09-17 | 1.7.0 | Le bouton de l'encart débloque la commande via l'API ERP (Oasis) au lieu d'appliquer un statut Presta ; nouvel onglet config "ERP / API" (URL + clé API) | ✅ Fait |
+| 2026-09-17 | 1.7.0 | Table de logs des appels API ERP (`ps_snt_doc_checker_erp_logs`) affichée dans l'onglet "ERP / API" + bouton "Purger les logs" (TRUNCATE) | ✅ Fait |
+| 2026-10-26 | 1.7.1 | Refus d'un document possible sans date de naissance client (exception `refused` en JS + PHP) | ✅ Fait |
 
 ---
 
@@ -371,7 +413,7 @@ snt_doc_checker/
 5. **Pas de suppression à la désinstallation:** Le fichier `uninstall.php` ne supprime PAS les données (tables conservées).
 
 6. **Validation obligatoire (v1.3.0):**
-   - **Date de naissance:** BLOQUE la sauvegarde d'un document si non renseignée (liée au client, pas au document)
+   - **Date de naissance:** BLOQUE la sauvegarde d'un document si non renseignée (liée au client, pas au document), **sauf pour le statut "refused"** (v1.7.1). Contrôle doublé : JS (`preview_document.tpl`) + PHP (`submitUpdate`)
    - **Date d'expiration:** BLOQUE la validation (statut "valid") si non renseignée
 
 7. **Changement statut automatique commande (v1.5.1):**

@@ -1,5 +1,85 @@
 # Historique des Versions - snt_doc_checker
 
+## Version 1.7.1 (2026-10-26)
+
+### Resume pour les equipes
+
+Correctif : il est desormais possible de **refuser** un document meme si la date de naissance du client n'est pas renseignee. Jusqu'ici, l'enregistrement etait bloque par l'alerte "Impossible d'enregistrer : la date de naissance du client est obligatoire", ce qui empechait justement de refuser un document sans date de naissance lisible.
+
+### Correctifs
+
+#### Refus d'un document sans date de naissance client
+
+Le controle de la date de naissance est ignore lorsque le statut enregistre est `refused`. Il reste actif pour tous les autres statuts (Valide, En attente, Expire). Le controle de la date d'expiration (obligatoire pour "Valide") est inchange.
+
+Le controle existe a deux niveaux, les deux ont ete corriges :
+- **Navigateur :** `views/templates/admin/preview_document.tpl`, ecouteur `submit` du formulaire (boutons "Enregistrer" et "Enregistrer et rester") : l'alerte et la modale de saisie ne s'affichent plus si le statut choisi est "Refuse".
+- **Serveur :** `controllers/admin/AdminMenuTabsDocChecker.php`, traitement `submitUpdate` / `submitUpdateStay`.
+
+#### Banniere d'alerte (mode edition)
+
+- **Fichier:** `views/templates/admin/preview_document.tpl`
+- Le texte precise que la date de naissance n'est pas requise pour passer le document au statut "Refuse".
+
+### Fichiers modifies
+
+| Fichier | Modification |
+|---------|--------------|
+| `controllers/admin/AdminMenuTabsDocChecker.php` | Exception `refused` sur la validation serveur de la date de naissance |
+| `views/templates/admin/preview_document.tpl` | Exception `refused` sur la validation JS + texte de la banniere |
+| `config.xml`, `config_fr.xml`, `snt_doc_checker.php` | Version 1.7.1 |
+| `NOTE_MISE_A_JOUR.md`, `CLAUDE.md` | Documentation de l'exception |
+
+Aucun script d'upgrade : pas de changement de base de donnees ni de hook.
+
+---
+
+## Version 1.5.2 (2026-07-06)
+
+### Resume pour les equipes
+
+Correctif d'affichage : les champs de saisie de date du back-office affichaient parfois le format americain (mm/jj/aaaa) au lieu du format francais (jj/mm/aaaa). Verification complete de la fonctionnalite "Modifier la date de naissance".
+
+### Correctifs
+
+#### Format d'affichage des dates (jj/mm/aaaa)
+
+- **Fichier:** `views/templates/admin/preview_document.tpl`
+- Ajout de l'attribut `lang="fr-FR"` sur les champs `<input type="date">` :
+  - Champ **date de naissance** du client (`#birthDate`)
+  - Champ **date d'expiration** du document (`#expirationDate`)
+
+**Limitation connue :** le format d'affichage d'un `<input type="date">` natif est impose par le navigateur, pas par le HTML.
+- **Firefox :** suit la locale du systeme d'exploitation (jj/mm/aaaa si OS en francais).
+- **Chrome / Edge :** suivent la langue de l'interface du navigateur (`chrome://settings/languages`) et **ignorent** l'attribut `lang`. Un Chrome en anglais affichera toujours mm/jj/aaaa.
+
+La valeur transmise reste au format ISO `aaaa-mm-jj` : aucun impact sur l'enregistrement ni la base de donnees.
+
+**Solution robuste envisagee (non implementee) :** remplacer le champ natif par un datepicker jQuery UI (deja charge dans le BO PrestaShop) force en jj/mm/aaaa, pour un affichage identique sur tous les navigateurs.
+
+### Verification effectuee
+
+Controle de bout en bout de la fonctionnalite **"Modifier la date de naissance"** :
+
+| Couche | Element | Etat |
+|--------|---------|------|
+| UI affichage | Date affichee en `%d/%m/%Y`, badge + boutons Modifier/Definir | OK |
+| UI alerte | Banniere bloquante si date manquante (mode edition) | OK |
+| Modal | `#birthDateModal` + input `#birthDate` | OK |
+| JS | `openBirthDateModal()` / `saveBirthDate()` (validation non-vide + date passee) | OK |
+| Controller | `ajaxProcessSetBirthDate()` (validation format `Y-m-d` + date passee) | OK |
+| Modele | `SntDocCheckerCustomer::updateBirthDate()` (getOrCreate + `pSQL`) | OK |
+
+Chaine complete et coherente, aucune anomalie detectee.
+
+### Fichiers modifies
+
+| Fichier | Modification |
+|---------|--------------|
+| `views/templates/admin/preview_document.tpl` | Attribut `lang="fr-FR"` sur les 2 champs date |
+
+---
+
 ## Version 1.4.0 (2026-02-04)
 
 ### Resume pour les equipes

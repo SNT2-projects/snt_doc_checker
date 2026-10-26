@@ -46,7 +46,7 @@ class Snt_doc_checker extends Module
     {
         $this->name = 'snt_doc_checker';
         $this->tab = 'administration';
-        $this->version = '1.5.1';
+        $this->version = '1.7.1';
         $this->author = 'SNT2';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -161,6 +161,12 @@ class Snt_doc_checker extends Module
         }
 
 
+        // Purge des logs des appels API ERP
+        if (Tools::isSubmit('submitPurgeErpLogs')) {
+            Db::getInstance()->execute('TRUNCATE TABLE `' . _DB_PREFIX_ . 'snt_doc_checker_erp_logs`');
+            $output .= $this->displayConfirmation($this->l('Les logs des appels API ERP ont été purgés.'));
+        }
+
         if (((bool)Tools::isSubmit('submitSnt_doc_checkerModule')) == true) {
             $this->postProcess();
         }
@@ -214,6 +220,7 @@ class Snt_doc_checker extends Module
                 'tabs' => [
                     'messages' => $this->l('Messages'),
                     'restrictions' => $this->l('Restrictions'),
+                    'erp' => $this->l('ERP / API'),
                     's3' => $this->l('S3'),
                     'automation' => $this->l('Automatisation'),
                     'logs' => $this->l('Logs')
@@ -221,6 +228,7 @@ class Snt_doc_checker extends Module
                 'input' => array_merge(
                     $this->getConfigFormMessages(),
                     $this->getConfigFormRestriction(),
+                    $this->getConfigFormErp(),
                     $this->getConfigFormS3(),
                     $this->getConfigFormAutomation(),
                     $this->getConfigFormLogs()
@@ -231,6 +239,108 @@ class Snt_doc_checker extends Module
                 ]
             ]
         ];
+    }
+
+
+    protected function getConfigFormErp()
+    {
+        return [
+            [
+                'tab' => 'erp',
+                'type' => 'text',
+                'label' => $this->l('URL de base de l\'ERP'),
+                'name' => 'SNT_DOC_CHECKER_ERP_URL',
+                'desc' => $this->l('URL de base de l\'ERP, sans slash final. Ex : https://erp.exemple.com'),
+                'size' => 100
+            ],
+            [
+                'tab' => 'erp',
+                'type' => 'text',
+                'label' => $this->l('Clé API ERP (x-api-key / token)'),
+                'name' => 'SNT_DOC_CHECKER_ERP_TOKEN',
+                'desc' => $this->l('Clé API utilisée en en-tête x-api-key pour la recherche de commande, et dans l\'URL pour le déblocage de commande.'),
+                'size' => 100
+            ],
+            [
+                'tab' => 'erp',
+                'type' => 'html',
+                'name' => 'SNT_DOC_CHECKER_ERP_LOGS_HTML',
+                'html_content' => $this->renderErpLogsHtml()
+            ]
+        ];
+    }
+
+    /**
+     * Génère le HTML de l'encart "Logs des appels API ERP" affiché sous les réglages
+     * de l'onglet "ERP / API", avec un bouton de purge (TRUNCATE).
+     *
+     * @return string
+     */
+    protected function renderErpLogsHtml()
+    {
+        $logs = Db::getInstance()->executeS(
+            'SELECT * FROM `' . _DB_PREFIX_ . 'snt_doc_checker_erp_logs` ORDER BY id_erp_log DESC LIMIT 100'
+        );
+
+        $html = '<div class="panel" style="margin-top:15px;">';
+        $html .= '<div class="panel-heading"><i class="icon-list"></i> ' . $this->l('Logs des appels API ERP') . '</div>';
+        $html .= '<div class="panel-body">';
+
+        $html .= '<button type="submit" name="submitPurgeErpLogs" class="btn btn-danger" '
+            . 'onclick="return confirm(\'' . $this->l('Purger tous les logs des appels ERP ? Cette action est irréversible.') . '\');">'
+            . '<i class="icon-trash"></i> ' . $this->l('Purger les logs') . '</button>';
+
+        if (!$logs) {
+            $html .= '<p class="text-muted" style="margin-top:15px;">' . $this->l('Aucun appel ERP enregistré pour le moment.') . '</p>';
+        } else {
+            $html .= '<p class="help-block" style="margin-top:10px;">' . $this->l('100 derniers appels (les plus récents en premier).') . '</p>';
+            $html .= '<div class="table-responsive"><table class="table"><thead><tr>'
+                . '<th>' . $this->l('Date') . '</th>'
+                . '<th>' . $this->l('Type') . '</th>'
+                . '<th>' . $this->l('Réf. web') . '</th>'
+                . '<th>' . $this->l('Réf. ERP') . '</th>'
+                . '<th>' . $this->l('HTTP') . '</th>'
+                . '<th>' . $this->l('Résultat') . '</th>'
+                . '<th>' . $this->l('Détails') . '</th>'
+                . '</tr></thead><tbody>';
+
+            foreach ($logs as $log) {
+                $type = ($log['call_type'] === 'search') ? $this->l('Recherche') : $this->l('Déblocage');
+                $result = $log['success']
+                    ? '<span class="label label-success">' . $this->l('Succès') . '</span>'
+                    : '<span class="label label-danger">' . $this->l('Échec') . '</span>';
+
+                $details = '';
+                if (!empty($log['error_message'])) {
+                    $details .= '<div class="text-danger"><strong>' . htmlspecialchars($log['error_message'], ENT_QUOTES, 'UTF-8') . '</strong></div>';
+                }
+                if (!empty($log['redirect_url'])) {
+                    $details .= '<div><small>' . $this->l('Redirection :') . ' ' . htmlspecialchars($log['redirect_url'], ENT_QUOTES, 'UTF-8') . '</small></div>';
+                }
+                if (!empty($log['response_body'])) {
+                    $details .= '<details><summary>' . $this->l('Réponse') . '</summary>'
+                        . '<pre style="white-space:pre-wrap;max-height:200px;overflow:auto;">' . htmlspecialchars($log['response_body'], ENT_QUOTES, 'UTF-8') . '</pre></details>';
+                }
+                $details .= '<details><summary>' . $this->l('URL appelée') . '</summary>'
+                    . '<pre style="white-space:pre-wrap;">' . htmlspecialchars($log['request_url'], ENT_QUOTES, 'UTF-8') . '</pre></details>';
+
+                $html .= '<tr>'
+                    . '<td>' . htmlspecialchars($log['date_add'], ENT_QUOTES, 'UTF-8') . '</td>'
+                    . '<td>' . $type . '</td>'
+                    . '<td>' . htmlspecialchars($log['presta_reference'], ENT_QUOTES, 'UTF-8') . '</td>'
+                    . '<td>' . htmlspecialchars((string)$log['oasis_reference'], ENT_QUOTES, 'UTF-8') . '</td>'
+                    . '<td>' . (int)$log['http_code'] . '</td>'
+                    . '<td>' . $result . '</td>'
+                    . '<td>' . $details . '</td>'
+                    . '</tr>';
+            }
+
+            $html .= '</tbody></table></div>';
+        }
+
+        $html .= '</div></div>';
+
+        return $html;
     }
 
 
@@ -384,6 +494,22 @@ class Snt_doc_checker extends Module
                 'name' => 'SNT_DOC_CHECKER_TRIGGER_STATUSES',
                 'desc' => $this->l('IDs des statuts de paiement qui déclenchent l\'attribution automatique du statut pièces. Ex: 10,2 pour "En attente de virement bancaire" et "Paiement accepté"'),
                 'size' => 50
+            ],
+            [
+                'tab' => 'restrictions',
+                'type' => 'text',
+                'label' => $this->l('ID du statut "Importé vers Oasis v2"'),
+                'name' => 'SNT_DOC_CHECKER_ORDER_STATUS_OASIS',
+                'desc' => $this->l('ID du statut de commande "Importé vers Oasis v2". Utilisé pour filtrer les commandes affichées dans l\'encart de validation des documents (statut actuel de la commande).'),
+                'size' => 50
+            ],
+            [
+                'tab' => 'restrictions',
+                'type' => 'text',
+                'label' => $this->l('ID du statut "Commande approuvée [Doc Checker]"'),
+                'name' => 'SNT_DOC_CHECKER_ORDER_STATUS_APPROVED',
+                'desc' => $this->l('ID du statut de commande appliqué par le bouton "Commande approuvée [Doc Checker]" depuis la page de validation d\'un document.'),
+                'size' => 50
             ]
         ];
     }
@@ -485,6 +611,12 @@ class Snt_doc_checker extends Module
             'SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D' => Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D', ''),
             'SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES' => Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_PIECES_VALIDES', ''),
             'SNT_DOC_CHECKER_TRIGGER_STATUSES' => Configuration::get('SNT_DOC_CHECKER_TRIGGER_STATUSES', ''),
+            'SNT_DOC_CHECKER_ORDER_STATUS_OASIS' => Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_OASIS', ''),
+            'SNT_DOC_CHECKER_ORDER_STATUS_APPROVED' => Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_APPROVED', ''),
+
+            // ERP / API
+            'SNT_DOC_CHECKER_ERP_URL' => Configuration::get('SNT_DOC_CHECKER_ERP_URL', ''),
+            'SNT_DOC_CHECKER_ERP_TOKEN' => Configuration::get('SNT_DOC_CHECKER_ERP_TOKEN', ''),
 
             // S3
             'SNT_DOC_CHECKER_S3_KEY' => Configuration::get('SNT_DOC_CHECKER_S3_KEY', ''),

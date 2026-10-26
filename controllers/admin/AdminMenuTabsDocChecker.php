@@ -55,6 +55,12 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
                 case 'setBirthDate':
                     $this->ajaxProcessSetBirthDate();
                     break;
+                case 'applyApprovedStatus':
+                    $this->ajaxProcessApplyApprovedStatus();
+                    break;
+                case 'unblockOrder':
+                    $this->ajaxProcessUnblockErpOrder();
+                    break;
             }
         }
 
@@ -514,6 +520,14 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
             }
         }
 
+        // Récupérer les commandes du client éligibles à l'approbation depuis cette page
+        $eligibleOrders = array();
+        $approvedStatusConfigured = (bool)(int)Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_APPROVED');
+        $erpConfigured = (bool)(Configuration::get('SNT_DOC_CHECKER_ERP_URL') && Configuration::get('SNT_DOC_CHECKER_ERP_TOKEN'));
+        if (!empty($data['id_customer'])) {
+            $eligibleOrders = $this->getEligibleCustomerOrders((int)$data['id_customer']);
+        }
+
         // Passer les données au template
         $this->context->smarty->assign(array(
             'document_data' => $data,
@@ -526,9 +540,14 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
             'linked_document' => $linkedDocument,
             'is_document_principal' => $isDocumentPrincipal,
             'is_document_associated' => $isDocumentAssociated,
-            'is_edit_mode' => true
+            'is_edit_mode' => true,
+            'eligible_orders' => $eligibleOrders,
+            'approved_status_configured' => $approvedStatusConfigured,
+            'erp_configured' => $erpConfigured,
+            'apply_approved_ajax_url' => 'index.php?controller=AdminMenuTabsDocChecker&ajax=1&action=applyApprovedStatus&token='.Tools::getAdminTokenLite('AdminMenuTabsDocChecker'),
+            'unblock_order_ajax_url' => 'index.php?controller=AdminMenuTabsDocChecker&ajax=1&action=unblockOrder&token='.Tools::getAdminTokenLite('AdminMenuTabsDocChecker'),
         ));
-    
+
         $fields_form = array(
             'form' => array(
                 'legend' => array(
@@ -597,6 +616,13 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
                     ),
                 ),
                 'buttons' => array(
+                    'save_stay' => array(
+                        'type' => 'submit',
+                        'name' => 'submitUpdateStay',
+                        'title' => 'Enregistrer et rester',
+                        'icon' => 'process-icon-save',
+                        'class' => 'btn btn-default pull-right',
+                    ),
                     'cancel' => array(
                         'href' => self::$currentIndex.'&token='.$this->token,
                         'title' => 'Retour à la liste',
@@ -610,7 +636,7 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
         );
 
         $output = '';
-    
+
         $helper = new HelperForm();
         $helper->module = $this->module;
         $helper->show_toolbar = true;
@@ -632,7 +658,10 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
         );
 
         $output .= $this->context->smarty->fetch(_PS_MODULE_DIR_ . $this->module->name . '/views/templates/admin/preview_document.tpl');
-    
+
+        // Encart "Commandes du client à approuver" (juste au-dessus du bloc "Modifier le document")
+        $output .= $this->context->smarty->fetch(_PS_MODULE_DIR_ . $this->module->name . '/views/templates/admin/client_orders_panel.tpl');
+
         return $output .  $helper->generateForm(array($fields_form));
     }
 
@@ -1086,6 +1115,460 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
         }
     }
 
+    /**
+     * Récupère les commandes du client éligibles à l'approbation depuis la page
+     * de validation d'un document.
+     *
+     * Conditions :
+     *  - la commande appartient au client ;
+     *  - son statut actuel est "Importé vers Oasis v2" (SNT_DOC_CHECKER_ORDER_STATUS_OASIS) ;
+     *  - elle a eu à un moment le statut "Demande de pièces : Catégorie C" ou "... Catégorie D" ;
+     *  - elle contient au moins un article de catégorie C ou D.
+     *
+     * @param int $id_customer
+     * @return array
+     */
+    public function getEligibleCustomerOrders($id_customer)
+    {
+        $id_customer = (int)$id_customer;
+        if (!$id_customer) {
+            return array();
+        }
+
+        $statusPiecesC = (int)Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_PIECES_C');
+        $statusPiecesD = (int)Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_PIECES_D');
+        $statusOasis   = (int)Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_OASIS');
+
+        $piecesStatuses = array_filter(array($statusPiecesC, $statusPiecesD));
+
+        // Sans les statuts nécessaires, aucun filtrage possible
+        if (empty($piecesStatuses) || !$statusOasis) {
+            return array();
+        }
+
+        $categorieC = (int)Configuration::get('SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_C');
+        $categorieD = (int)Configuration::get('SNT_DOC_CHECKER_RESTRICTED_CATEGORIE_D');
+        $restrictedCategories = array_filter(array($categorieC, $categorieD));
+
+        if (empty($restrictedCategories)) {
+            return array();
+        }
+
+        // Commandes du client au statut actuel "Importé vers Oasis v2"
+        // ayant eu un statut "Demande de pièces C/D" dans leur historique
+        $sql = 'SELECT DISTINCT o.id_order, o.reference, o.date_add
+                FROM ' . _DB_PREFIX_ . 'orders o
+                INNER JOIN ' . _DB_PREFIX_ . 'order_history oh ON oh.id_order = o.id_order
+                WHERE o.id_customer = ' . $id_customer . '
+                AND o.current_state = ' . $statusOasis . '
+                AND oh.id_order_state IN (' . implode(',', array_map('intval', $piecesStatuses)) . ')
+                AND o.id_order NOT IN (
+                    SELECT id_order FROM ' . _DB_PREFIX_ . 'snt_doc_checker_unblocked_orders
+                )
+                ORDER BY o.date_add DESC
+                LIMIT 20';
+
+        $rows = Db::getInstance()->executeS($sql);
+        if (!$rows) {
+            return array();
+        }
+
+        $orders = array();
+        foreach ($rows as $row) {
+            $order = new Order((int)$row['id_order']);
+            if (!Validate::isLoadedObject($order)) {
+                continue;
+            }
+
+            // Vérifier qu'au moins un article est de catégorie C ou D
+            $hasRestrictedProduct = false;
+            foreach ($order->getProducts() as $product) {
+                $features = Product::getFeaturesStatic((int)$product['product_id']);
+                foreach ($features as $feature) {
+                    if (in_array((int)$feature['id_feature_value'], $restrictedCategories)) {
+                        $hasRestrictedProduct = true;
+                        break 2;
+                    }
+                }
+            }
+
+            if (!$hasRestrictedProduct) {
+                continue;
+            }
+
+            $orders[] = array(
+                'id_order'  => (int)$row['id_order'],
+                'reference' => $row['reference'],
+                'date_add'  => Tools::displayDate($row['date_add'], null, true),
+                'url'       => $this->getOrderViewLink((int)$row['id_order']),
+            );
+        }
+
+        return $orders;
+    }
+
+    /**
+     * Génère le lien vers la fiche d'une commande dans le back-office, compatible
+     * PrestaShop 1.7 (route Symfony admin_orders_view) et 1.6 (contrôleur legacy).
+     *
+     * @param int $idOrder
+     * @return string
+     */
+    private function getOrderViewLink($idOrder)
+    {
+        if (version_compare(_PS_VERSION_, '1.7.0.0', '>=')) {
+            return $this->context->link->getAdminLink('AdminOrders', true, array(
+                'route' => 'admin_orders_view',
+                'orderId' => (int)$idOrder,
+            ));
+        }
+
+        return $this->context->link->getAdminLink('AdminOrders').'&vieworder&id_order='.(int)$idOrder;
+    }
+
+    /**
+     * Méthode AJAX : applique le statut "Commande approuvée [Doc Checker]" à une commande,
+     * sans envoi d'email au client.
+     */
+    public function ajaxProcessApplyApprovedStatus()
+    {
+        try {
+            $idOrder = (int)Tools::getValue('id_order');
+            $statusApproved = (int)Configuration::get('SNT_DOC_CHECKER_ORDER_STATUS_APPROVED');
+
+            if (!$idOrder) {
+                header('Content-Type: application/json');
+                die(json_encode(array('success' => false, 'message' => 'ID de commande manquant')));
+            }
+
+            if (!$statusApproved) {
+                header('Content-Type: application/json');
+                die(json_encode(array('success' => false, 'message' => 'Le statut "Commande approuvée [Doc Checker]" n\'est pas configuré dans le back-office.')));
+            }
+
+            $order = new Order($idOrder);
+            if (!Validate::isLoadedObject($order)) {
+                header('Content-Type: application/json');
+                die(json_encode(array('success' => false, 'message' => 'Commande introuvable')));
+            }
+
+            // Ne pas ré-appliquer si la commande est déjà à ce statut
+            if ((int)$order->current_state === $statusApproved) {
+                header('Content-Type: application/json');
+                die(json_encode(array('success' => false, 'message' => 'La commande est déjà au statut "Commande approuvée".')));
+            }
+
+            $idEmployee = (isset($this->context->employee) && Validate::isLoadedObject($this->context->employee))
+                ? (int)$this->context->employee->id
+                : 0;
+
+            $history = new OrderHistory();
+            $history->id_order = $idOrder;
+            $history->id_employee = $idEmployee;
+            $history->changeIdOrderState($statusApproved, $idOrder);
+            // add() sans email : changement de statut silencieux
+            $history->add();
+
+            // Forcer la mise à jour du current_state
+            Db::getInstance()->execute(
+                'UPDATE `' . _DB_PREFIX_ . 'orders` SET `current_state` = ' . $statusApproved . ' WHERE `id_order` = ' . $idOrder
+            );
+
+            header('Content-Type: application/json');
+            die(json_encode(array('success' => true, 'message' => 'Statut "Commande approuvée" appliqué avec succès.')));
+        } catch (Exception $e) {
+            header('Content-Type: application/json');
+            die(json_encode(array('success' => false, 'message' => $e->getMessage())));
+        }
+    }
+
+    /**
+     * Méthode AJAX : débloque une commande via l'API de l'ERP (Oasis).
+     *
+     * Déroulé :
+     *  1. Recherche de la référence ERP (Oasis) à partir de la référence web Presta
+     *     (GET {erp_url}/io/api/v1/orders?filter[prestashop_id]=REF&display=[reference]).
+     *  2. Déblocage de la commande côté ERP
+     *     (POST {erp_url}/api/{token}/json/DebloquerCommande avec num_commande=REF_OASIS).
+     *
+     * En cas d'échec d'une des deux étapes, aucun changement n'est effectué et
+     * un message d'erreur est retourné.
+     */
+    public function ajaxProcessUnblockErpOrder()
+    {
+        header('Content-Type: application/json');
+
+        try {
+            $idOrder = (int)Tools::getValue('id_order');
+            $erpUrl = Configuration::get('SNT_DOC_CHECKER_ERP_URL');
+            $erpToken = Configuration::get('SNT_DOC_CHECKER_ERP_TOKEN');
+
+            if (!$idOrder) {
+                die(json_encode(array('success' => false, 'message' => 'ID de commande manquant')));
+            }
+
+            if (empty($erpUrl) || empty($erpToken)) {
+                die(json_encode(array('success' => false, 'message' => 'La configuration ERP (URL + clé API) est incomplète. Renseignez l\'onglet "ERP / API" du module.')));
+            }
+
+            $order = new Order($idOrder);
+            if (!Validate::isLoadedObject($order)) {
+                die(json_encode(array('success' => false, 'message' => 'Commande introuvable')));
+            }
+
+            // Référence web Presta = prestashop_id côté ERP
+            $prestaReference = $order->reference;
+
+            // Étape 1 : récupérer la référence Oasis (ERP)
+            $errorMessage = '';
+            $oasisReference = $this->getErpOrderReference($idOrder, $prestaReference, $errorMessage);
+            if ($oasisReference === null) {
+                die(json_encode(array('success' => false, 'message' => $errorMessage)));
+            }
+
+            // Étape 2 : débloquer la commande côté ERP
+            $errorMessage = '';
+            $unblockResponse = $this->unblockErpOrder($idOrder, $prestaReference, $oasisReference, $errorMessage);
+            if ($unblockResponse === false) {
+                die(json_encode(array(
+                    'success' => false,
+                    'message' => $errorMessage,
+                    'oasis_reference' => $oasisReference,
+                )));
+            }
+
+            // Mémoriser la commande débloquée pour ne plus la proposer dans l'encart
+            // (le statut Presta ne change pas).
+            $this->recordUnblockedOrder($idOrder, $prestaReference, $oasisReference);
+
+            die(json_encode(array(
+                'success' => true,
+                'message' => 'Commande débloquée dans l\'ERP.',
+                'presta_reference' => $prestaReference,
+                'oasis_reference' => $oasisReference,
+                'erp_response' => $unblockResponse,
+            )));
+        } catch (Exception $e) {
+            die(json_encode(array('success' => false, 'message' => $e->getMessage())));
+        }
+    }
+
+    /**
+     * Appel ERP n°1 : récupère la référence Oasis (ERP) d'une commande à partir
+     * de sa référence web Presta (prestashop_id côté ERP).
+     *
+     * @param int    $idOrder         ID de la commande Presta (pour le log)
+     * @param string $prestaReference Référence web Presta
+     * @param string &$errorMessage   Rempli en cas d'échec
+     * @return string|null Référence ERP (Oasis) ou null en cas d'échec
+     */
+    private function getErpOrderReference($idOrder, $prestaReference, &$errorMessage)
+    {
+        $erpUrl = rtrim(Configuration::get('SNT_DOC_CHECKER_ERP_URL'), '/');
+        $erpToken = Configuration::get('SNT_DOC_CHECKER_ERP_TOKEN');
+
+        // Brackets conservés littéralement (attendus tels quels par l'API ERP).
+        // Le slash final après "orders" est requis par l'ERP (sinon redirection 302).
+        $url = $erpUrl.'/io/api/v1/orders/'
+            .'?filter[prestashop_id]='.rawurlencode($prestaReference)
+            .'&display=[reference]';
+
+        $ch = curl_init();
+        curl_setopt_array($ch, array(
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => array(
+                'x-api-key: '.$erpToken,
+                'Accept: application/json',
+            ),
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CUSTOMREQUEST => 'GET',
+            // Suivre une éventuelle redirection (l'ERP en émet, ex. slash final)
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 3,
+        ));
+
+        $response = curl_exec($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $redirectUrl = (string)curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        $oasisReference = null;
+        $success = false;
+        $errorMessage = '';
+
+        if ($response === false) {
+            $errorMessage = 'Erreur réseau lors de la recherche de la commande dans l\'ERP : '.$curlError;
+        } elseif ($httpCode < 200 || $httpCode >= 300) {
+            $errorMessage = 'L\'ERP a répondu HTTP '.$httpCode.' lors de la recherche de la commande.'
+                .($redirectUrl ? ' Redirection vers : '.$redirectUrl : '');
+        } else {
+            $data = json_decode($response, true);
+            if (!is_array($data) || empty($data['value']) || empty($data['value'][0]['reference'])) {
+                $errorMessage = 'Aucune référence ERP trouvée pour la commande '.$prestaReference.'.';
+            } else {
+                $oasisReference = $data['value'][0]['reference'];
+                $success = true;
+            }
+        }
+
+        // Le token est ici dans un en-tête (pas dans l'URL) : rien à masquer
+        $this->logErpCall('search', $idOrder, $prestaReference, $oasisReference, $url, $httpCode, $redirectUrl, ($response === false ? '' : $response), $errorMessage, $success);
+
+        return $success ? $oasisReference : null;
+    }
+
+    /**
+     * Appel ERP n°2 : débloque une commande côté ERP à partir de sa référence Oasis.
+     *
+     * @param int    $idOrder         ID de la commande Presta (pour le log)
+     * @param string $prestaReference Référence web Presta (pour le log)
+     * @param string $oasisReference  Référence ERP (Oasis)
+     * @param string &$errorMessage   Rempli en cas d'échec
+     * @return string|false Réponse brute de l'ERP, ou false en cas d'échec
+     */
+    private function unblockErpOrder($idOrder, $prestaReference, $oasisReference, &$errorMessage)
+    {
+        $erpUrl = rtrim(Configuration::get('SNT_DOC_CHECKER_ERP_URL'), '/');
+        $erpToken = Configuration::get('SNT_DOC_CHECKER_ERP_TOKEN');
+
+        // Ici le token fait partie de l'URL (et non d'un en-tête).
+        // Le slash final est requis par l'ERP (sinon redirection 302).
+        $url = $erpUrl.'/api/'.rawurlencode($erpToken).'/json/DebloquerCommande/';
+
+        $ch = curl_init();
+        curl_setopt_array($ch, array(
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => http_build_query(array('num_commande' => $oasisReference)),
+            CURLOPT_HTTPHEADER => array(
+                'Content-Type: application/x-www-form-urlencoded',
+            ),
+            CURLOPT_TIMEOUT => 30,
+        ));
+
+        $response = curl_exec($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $redirectUrl = (string)curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        // URLs masquées pour le log : on ne stocke jamais le token en clair
+        // (il figure dans le chemin de l'URL et donc aussi dans la cible de redirection)
+        $tokenMask = array(rawurlencode($erpToken), $erpToken);
+        $logUrl = str_replace($tokenMask, '***', $url);
+        $redirectUrl = str_replace($tokenMask, '***', $redirectUrl);
+
+        $success = false;
+        $errorMessage = '';
+        $returnBody = false;
+
+        if ($response === false) {
+            $errorMessage = 'Erreur réseau lors du déblocage de la commande dans l\'ERP : '.$curlError;
+        } elseif ($httpCode < 200 || $httpCode >= 300) {
+            $errorMessage = 'L\'ERP a répondu HTTP '.$httpCode.' lors du déblocage de la commande.'
+                .($redirectUrl ? ' Redirection vers : '.$redirectUrl : '');
+        } else {
+            // La réponse attendue est du JSON : { "meta": { "status": "success", ... }, "data": "1" }
+            // Si le JSON contient un bloc meta, on exige meta.status = "success".
+            $data = json_decode($response, true);
+            if (is_array($data) && isset($data['meta']['status']) && Tools::strtolower($data['meta']['status']) !== 'success') {
+                $errorMessage = !empty($data['meta']['message'])
+                    ? 'Échec du déblocage côté ERP : '.$data['meta']['message']
+                    : 'Échec du déblocage côté ERP.';
+            } else {
+                $success = true;
+                $returnBody = $response;
+            }
+        }
+
+        $this->logErpCall('unblock', $idOrder, $prestaReference, $oasisReference, $logUrl, $httpCode, $redirectUrl, ($response === false ? '' : $response), $errorMessage, $success);
+
+        return $success ? $returnBody : false;
+    }
+
+    /**
+     * Enregistre un appel API ERP dans la table de logs (ps_snt_doc_checker_erp_logs).
+     *
+     * @param string      $callType        'search' ou 'unblock'
+     * @param int         $idOrder         ID commande Presta
+     * @param string      $prestaReference Référence web Presta
+     * @param string|null $oasisReference  Référence ERP (Oasis) si connue
+     * @param string      $url             URL appelée (token déjà masqué le cas échéant)
+     * @param int         $httpCode        Code HTTP retourné
+     * @param string      $redirectUrl     Cible de redirection (3xx) le cas échéant
+     * @param string      $responseBody    Corps de réponse brut
+     * @param string      $errorMessage    Message d'erreur le cas échéant
+     * @param bool        $success         Succès de l'appel
+     */
+    private function logErpCall($callType, $idOrder, $prestaReference, $oasisReference, $url, $httpCode, $redirectUrl, $responseBody, $errorMessage, $success)
+    {
+        $employeeId = 0;
+        $employeeName = '';
+        if (isset($this->context->employee) && Validate::isLoadedObject($this->context->employee)) {
+            $employeeId = (int)$this->context->employee->id;
+            $employeeName = $this->context->employee->firstname.' '.$this->context->employee->lastname;
+        }
+
+        // Limiter la taille du corps de réponse stocké
+        $body = (string)$responseBody;
+        if (Tools::strlen($body) > 5000) {
+            $body = Tools::substr($body, 0, 5000).' […tronqué]';
+        }
+
+        Db::getInstance()->insert('snt_doc_checker_erp_logs', array(
+            'call_type'        => pSQL($callType),
+            'id_order'         => (int)$idOrder,
+            'presta_reference' => pSQL($prestaReference),
+            'oasis_reference'  => ($oasisReference !== null && $oasisReference !== '') ? pSQL($oasisReference) : null,
+            'request_url'      => pSQL($url, true),
+            'http_code'        => (int)$httpCode,
+            'redirect_url'     => pSQL($redirectUrl, true),
+            'response_body'    => pSQL($body, true),
+            'error_message'    => ($errorMessage !== '') ? pSQL($errorMessage, true) : null,
+            'success'          => $success ? 1 : 0,
+            'id_employee'      => $employeeId,
+            'employee_name'    => pSQL($employeeName),
+            'date_add'         => date('Y-m-d H:i:s'),
+        ));
+    }
+
+    /**
+     * Mémorise une commande débloquée dans l'ERP (table persistante) afin qu'elle
+     * ne soit plus proposée dans l'encart "Commandes du client à approuver".
+     * Le statut PrestaShop de la commande n'est pas modifié.
+     *
+     * @param int         $idOrder
+     * @param string      $prestaReference
+     * @param string|null $oasisReference
+     */
+    private function recordUnblockedOrder($idOrder, $prestaReference, $oasisReference)
+    {
+        $employeeId = 0;
+        $employeeName = '';
+        if (isset($this->context->employee) && Validate::isLoadedObject($this->context->employee)) {
+            $employeeId = (int)$this->context->employee->id;
+            $employeeName = $this->context->employee->firstname.' '.$this->context->employee->lastname;
+        }
+
+        Db::getInstance()->insert(
+            'snt_doc_checker_unblocked_orders',
+            array(
+                'id_order'         => (int)$idOrder,
+                'presta_reference' => pSQL($prestaReference),
+                'oasis_reference'  => ($oasisReference !== null && $oasisReference !== '') ? pSQL($oasisReference) : null,
+                'id_employee'      => $employeeId,
+                'employee_name'    => pSQL($employeeName),
+                'date_add'         => date('Y-m-d H:i:s'),
+            ),
+            false,
+            true,
+            Db::INSERT_IGNORE
+        );
+    }
+
     public function postProcess()
     {
         // Create document
@@ -1163,7 +1646,7 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
         }
 
         // Update document
-        if (Tools::isSubmit('submitUpdate'))
+        if (Tools::isSubmit('submitUpdate') || Tools::isSubmit('submitUpdateStay'))
         {
             $id_data = Tools::getValue('id_data');
             $link_document = Tools::getValue('link_document');
@@ -1178,7 +1661,8 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
             $id_customer = $old_data['id_customer'];
 
             // Validation: La date de naissance du client est OBLIGATOIRE
-            if (!SntDocCheckerCustomer::hasBirthDate($id_customer)) {
+            // sauf pour un refus (le document peut justement être refusé faute de date de naissance)
+            if ($statut_document != 'refused' && !SntDocCheckerCustomer::hasBirthDate($id_customer)) {
                 $this->errors[] = 'La date de naissance du client est obligatoire pour enregistrer ce document. Veuillez la renseigner.';
                 return;
             }
@@ -1249,6 +1733,11 @@ class AdminMenuTabsDocCheckerController extends ModuleAdminController
                 if ($customer && !empty($customer['email'])) {
                     $this->sendEmail($statut_document, $id_data, $this->getDocType($type_document), $customer['email']);
                 }
+            }
+
+            // "Enregistrer et rester" : revenir sur la page de modification du document
+            if (Tools::isSubmit('submitUpdateStay')) {
+                Tools::redirectAdmin(self::$currentIndex.'&id_data='.(int)$id_data.'&updatesnt_doc_checker_data&token='.$this->token);
             }
 
             Tools::redirectAdmin($this->context->link->getAdminLink('AdminMenuTabsDocChecker'));

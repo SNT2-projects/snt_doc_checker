@@ -6,8 +6,8 @@
             <div class="alert alert-danger" style="margin-bottom: 15px;">
                 <strong><i class="icon-exclamation-triangle"></i> ATTENTION:</strong>
                 La date de naissance du client n'est pas renseignée.
-                Elle est <strong>obligatoire</strong> pour pouvoir enregistrer les modifications sur ce document.
-                <button type="button" class="btn btn-warning btn-sm pull-right" onclick="openBirthDateModal({$document_data.id_customer})">
+                Elle est <strong>obligatoire</strong> pour pouvoir enregistrer les modifications sur ce document (sauf pour le passer au statut "Refusé").
+                <button type="button" class="btn btn-warning btn-sm pull-right" onclick="openBirthDateModal({$document_data.id_customer}, '')">
                     <i class="icon-calendar"></i> Définir la date de naissance
                 </button>
                 <div class="clearfix"></div>
@@ -171,13 +171,18 @@
                                 <tr>
                                     <td><strong>Date de naissance:</strong></td>
                                     <td>
-                                        {if isset($customer_birth_info) && $customer_birth_info.birth_date && $customer_birth_info.birth_date != '0000-00-00'}
+                                        {if isset($customer_birth_info) && $customer_birth_info && !empty($customer_birth_info.birth_date) && $customer_birth_info.birth_date != '0000-00-00'}
                                             {$customer_birth_info.birth_date|date_format:"%d/%m/%Y"}
                                             <span class="label label-success"><i class="icon-check"></i> Renseignée</span>
+                                            {if isset($is_edit_mode) && $is_edit_mode}
+                                                <button type="button" class="btn btn-xs btn-primary" style="margin-left: 5px;" onclick="openBirthDateModal({$customer_data.id_customer}, '{$customer_birth_info.birth_date}')">
+                                                    <i class="icon-pencil"></i> Modifier
+                                                </button>
+                                            {/if}
                                         {else}
                                             <span class="label label-danger"><i class="icon-warning"></i> Non renseignée</span>
                                             {if isset($is_edit_mode) && $is_edit_mode}
-                                                <button type="button" class="btn btn-xs btn-warning" onclick="openBirthDateModal({$customer_data.id_customer})">
+                                                <button type="button" class="btn btn-xs btn-warning" onclick="openBirthDateModal({$customer_data.id_customer}, '')">
                                                     <i class="icon-calendar"></i> Définir
                                                 </button>
                                             {/if}
@@ -818,7 +823,29 @@ document.addEventListener('DOMContentLoaded', function() {
             element.textContent = getDocumentTypeLabel(documentType);
         }
     });
-    
+
+    {* Validation côté client : bloquer l'enregistrement si la date de naissance du client n'est pas renseignée,
+       sauf pour un refus (le document peut justement être refusé faute de date de naissance) *}
+    {if isset($is_edit_mode) && $is_edit_mode}
+        var hasBirthDate = {if isset($has_birth_date) && $has_birth_date}true{else}false{/if};
+        var birthDateCustomerId = {if isset($document_data.id_customer)}{$document_data.id_customer}{else}0{/if};
+        var saveButton = document.querySelector('button[name="submitUpdate"], button[name="submitUpdateStay"]');
+        var docForm = saveButton ? saveButton.closest('form') : null;
+        if (docForm) {
+            docForm.addEventListener('submit', function(e) {
+                var statutField = docForm.querySelector('[name="statut_document"]');
+                var isRefus = statutField && statutField.value === 'refused';
+                if (!hasBirthDate && !isRefus) {
+                    e.preventDefault();
+                    alert("Impossible d'enregistrer : la date de naissance du client est obligatoire.\n\nVeuillez la renseigner avant d'enregistrer ce document.");
+                    if (typeof openBirthDateModal === 'function' && birthDateCustomerId) {
+                        openBirthDateModal(birthDateCustomerId, '');
+                    }
+                }
+            });
+        }
+    {/if}
+
     // Gestion des images
     if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].indexOf(fileExtension) !== -1) {
         var image = document.getElementById('preview-image');
@@ -1181,9 +1208,9 @@ function saveExpirationDate() {
 }
 
 // Fonction pour ouvrir la modal de définition de date de naissance
-function openBirthDateModal(customerId) {
+function openBirthDateModal(customerId, existingDate) {
     $('#customerIdForBirthDate').val(customerId);
-    $('#birthDate').val('');
+    $('#birthDate').val(existingDate || '');
     $('#birthDateModal').modal('show');
 }
 
